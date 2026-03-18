@@ -39,7 +39,7 @@ from app.modules.users.service import UserService
 router = APIRouter(tags=["Users"])
 
 
-def _get_user_service(redis=Depends(get_redis)) -> UserService:
+async def _get_user_service(redis=Depends(get_redis)) -> UserService:
     return UserService(redis=redis)
 
 

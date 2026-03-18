@@ -6,8 +6,7 @@ Covers profile, onboarding, and admin request/response models.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional
+from pydantic import BaseModel, Field
 
 
 # ── Profile response ────────────────────────────────────

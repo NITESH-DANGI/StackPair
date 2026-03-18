@@ -501,7 +501,11 @@ class AuthService:
                 headers={"Retry-After": str(OTP_WINDOW_SECONDS)},
             )
 
-    async def _invalidate_user_cache(self, user_id: uuid.UUID) -> None:
+    async def _invalidate_user_cache(
+        self, user_id: uuid.UUID, auth_id: uuid.UUID | None = None
+    ) -> None:
         """Clear user and profile caches."""
         await self.redis.delete(f"user:{user_id}")
         await self.redis.delete(f"profile:{user_id}")
+        if auth_id:
+            await self.redis.delete(f"user_by_auth:{auth_id}")

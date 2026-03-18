@@ -372,6 +372,10 @@ class UserService:
 
     # ── Cache helpers ───────────────────────────────────
 
-    async def _invalidate_cache(self, user_id: uuid.UUID) -> None:
+    async def _invalidate_cache(
+        self, user_id: uuid.UUID, auth_id: uuid.UUID | None = None
+    ) -> None:
         await self.redis.delete(f"user:{user_id}")
         await self.redis.delete(f"profile:{user_id}")
+        if auth_id:
+            await self.redis.delete(f"user_by_auth:{auth_id}")

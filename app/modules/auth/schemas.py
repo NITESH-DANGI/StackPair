@@ -68,9 +68,13 @@ class GitHubOAuthURL(BaseModel):
     url: str
 
 
-class GitHubCallbackRequest(BaseModel):
+class OAuthCallbackRequest(BaseModel):
     code: str
     state: str | None = None
+
+
+# Backward-compatible alias
+GitHubCallbackRequest = OAuthCallbackRequest
 
 
 # ── Generic ─────────────────────────────────────────────

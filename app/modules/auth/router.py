@@ -20,6 +20,7 @@ from app.modules.auth.schemas import (
     GitHubCallbackRequest,
     GitHubOAuthURL,
     MessageResponse,
+    OAuthCallbackRequest,
     RefreshRequest,
     RefreshResponse,
     RegisterRequest,
@@ -32,7 +33,7 @@ from app.modules.users.models import User
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-def _get_auth_service(redis=Depends(get_redis)) -> AuthService:
+async def _get_auth_service(redis=Depends(get_redis)) -> AuthService:
     supabase = create_client(settings.supabase_url, settings.supabase_service_key)
     return AuthService(supabase=supabase, redis=redis)
 
@@ -124,7 +125,7 @@ async def google_oauth(
 
 @router.post("/google/callback", response_model=AuthResponse)
 async def google_callback(
-    body: GitHubCallbackRequest,
+    body: OAuthCallbackRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
     service: AuthService = Depends(_get_auth_service),

@@ -11,6 +11,7 @@ alembic==1.18.4
 # ── Validation & Config ─────────────────────────
 pydantic==2.12.5
 pydantic-settings==2.13.1
+email-validator>=2.0.0
 
 # ── Auth & JWT ──────────────────────────────────
 supabase==2.28.2

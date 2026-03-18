@@ -80,7 +80,7 @@ async def get_current_user(
             detail="TOKEN_INVALID",
         )
 
-    cache_key = f"user:{auth_id}"
+    cache_key = f"user_by_auth:{auth_id}"
     cached = await redis.get(cache_key)
     if cached:
         data = json.loads(cached)
