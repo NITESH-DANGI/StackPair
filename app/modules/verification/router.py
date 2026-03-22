@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
-from app.modules.users.models import User
+from app.core.dependencies import has_role, require_active, verify_internal_token
+from app.modules.users.models import User, UserRole
 from app.modules.verification.models import (
     SkillBenchmark,
     UserPlatformHandle,
@@ -37,37 +36,11 @@ from app.modules.verification.schemas import (
 router = APIRouter(tags=["Verification"])
 
 
-# ── Auth helpers ────────────────────────────────────────
-
-
-def _require_internal_token(authorization: str = Header(...)) -> None:
-    """Validate INTERNAL_SERVICE_TOKEN from Authorization header."""
-    token = authorization.replace("Bearer ", "")
-    if token != settings.internal_service_token:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="INTERNAL_TOKEN_REQUIRED",
-        )
-
-
-def _require_admin(user: User = Depends(get_current_user)) -> User:
-    """Require the current user to have ADMIN role."""
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="ADMIN_ROLE_REQUIRED",
-        )
-    return user
-
-
-def _require_active_user(user: User = Depends(get_current_user)) -> User:
-    """Require the user to be in ACTIVE onboarding state."""
-    if user.onboarding_state != "ACTIVE":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User must be in ACTIVE state",
-        )
-    return user
+# Auth guards reused from app.core.dependencies:
+#   verify_internal_token  — for /internal/* routes
+#   has_role(UserRole.ADMIN) — for /admin/* routes
+#   require_active          — for user routes (JWT + ACTIVE)
+_require_admin = has_role(UserRole.ADMIN)
 
 
 # ══════════════════════════════════════════════════════════
@@ -82,7 +55,7 @@ def _require_active_user(user: User = Depends(get_current_user)) -> User:
 async def trigger_verification(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(_require_internal_token),
+    _: None = Depends(verify_internal_token),
 ):
     """POST /internal/verification/trigger/{user_id} — manually trigger verification."""
     # Check user exists
@@ -111,7 +84,7 @@ async def trigger_verification(
 async def get_verification_status(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(_require_internal_token),
+    _: None = Depends(verify_internal_token),
 ):
     """GET /internal/verification/status/{user_id} — latest run status."""
     stmt = (
@@ -143,7 +116,7 @@ async def get_verification_status(
 async def get_verification_runs(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(_require_internal_token),
+    _: None = Depends(verify_internal_token),
 ):
     """GET /internal/verification/runs/{user_id} — full run history."""
     stmt = (
@@ -239,7 +212,7 @@ async def admin_refresh_benchmarks(
 async def submit_platforms(
     body: SubmitPlatformsRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_require_active_user),
+    user: User = Depends(require_active),
 ):
     """PUT /users/me/platforms — submit/update platform handles."""
     valid_platforms = {"github", "leetcode", "kaggle", "codeforces", "stackoverflow", "portfolio"}
@@ -279,7 +252,7 @@ async def submit_platforms(
 )
 async def my_verification_status(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(_require_active_user),
+    user: User = Depends(require_active),
 ):
     """GET /users/me/verification-status — current verification run status."""
     stmt = (
