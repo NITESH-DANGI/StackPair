@@ -153,6 +153,12 @@ class UserProfile(Base):
     showcase_unlocked: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    inactivity_warnings: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default=text("0")
+    )
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -47,5 +47,21 @@ class Settings(BaseSettings):
     app_name: str = "StackPair"
     debug: bool = False
 
+    # ── M-02 · Verification Scrapers ────────────
+    github_pat: str = ""
+    stackoverflow_key: str = ""
+    kaggle_username: str = ""
+    kaggle_key: str = ""
+    codeforces_key: str = ""
+    codeforces_secret: str = ""
+    claude_api_key: str = ""
+
+    # ── Pinecone (M-03 readiness) ───────────────
+    pinecone_api_key: str = ""
+    pinecone_index: str = "stackpair-skills"
+
+    # ── Verification Config ─────────────────────
+    verification_batch_size: int = 50
+
 
 settings = Settings()  # type: ignore[call-arg]
