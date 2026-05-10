@@ -1,32 +1,60 @@
-# dependencies
+# Frontend dependencies
 frontend/node_modules/
 frontend/.pnp
 frontend/.pnp.*
 
-# testing
+# Frontend testing
 frontend/coverage/
 
-# next.js
+# Next.js
 frontend/.next/
 frontend/out/
 
-# production
+# Frontend production
 frontend/build/
 
-# misc
+# Frontend misc
+frontend/next-env.d.ts
+frontend/.vercel
+
+# Python stuff
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv
+venv/
+ENV/
+env/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Misc
 *.pem
 *.tsbuildinfo
-frontend/next-env.d.ts
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# Env files
 .env*
 
-# vercel
-frontend/.vercel
+# IDEs
+.idea/
+.vscode/
+
+# Project specific (from remote, but I'll comment them out if they are too broad, e.g. *.png)
+# *.png
+# *.docx

@@ -1,0 +1,1 @@
+# StackPair – auth module
