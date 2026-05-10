@@ -1,0 +1,1244 @@
+STACKPAIR
+Product Requirements Document
+Frontend Module M-00
+Landing Page & Public Marketing Site
+Module
+M-00
+Version
+v1.0.0
+Backend Sync
+None (public)
+Date
+March 2026
+Route
+/ (root)
+Auth Required
+No — fully public
+Priority
+P0
+Depends On
+M-01 (CTAs link to /login)
+§1  Overview & Objectives
+M-00 is the public-facing landing page of StackPair, served at the root URL /. It is the first thing any visitor sees — before login, before signup, before any product interaction. Its single job is to convert a curious developer into a registered user.
+Unlike every other module, M-00 has no backend dependency. It is a fully static Next.js page (SSG), deployed to Cloudflare CDN, and loads with zero API calls. The only dynamic element is a live user count pulled from a public stats endpoint.
+1.1  Strategic Purpose
+Primary conversion goal: visitor → signup. Every design decision serves this.
+Cold-start acquisition channel: the Portfolio Card Generator (/card) links back here. Landing page must capture that traffic.
+Brand first impression: StackPair is technical, clean, and confident — not hype-y. Copy is direct and developer-specific.
+SEO foundation: landing page is the primary organic search entry point for queries like "peer learning platform India" and "developer skill verification".
+1.2  Objectives
+Communicate the StackPair value proposition in under 10 seconds above the fold
+Drive signups via primary CTA (Get Started Free) and secondary CTA (See How It Works)
+Showcase all three modes — Learn, Build, Showcase — with concrete, visual examples
+Feature the Portfolio Card Generator as a zero-friction entry point (no login required)
+Build trust: show skill verification methodology, developer testimonials, and live user count
+Achieve Lighthouse score ≥ 95 on Performance, Accessibility, Best Practices, SEO
+1.3  Scope
+In Scope: All sections of the / route. /about, /privacy, /terms static pages. Shared Navbar and Footer components used by /card and /showcase. SEO meta tags. OG image generation.
+Out of Scope: Any authenticated UI. Pricing/billing logic (belongs to M-13). The Card Generator itself (belongs to M-12 — only a teaser section here). Post-signup flows (F-01).
+1.4  Page Sections at a Glance
+#
+Section
+Primary Goal
+Key Component
+S-01
+Navbar
+Navigation + top-level CTAs
+Navbar.tsx
+S-02
+Hero
+First impression + primary CTA
+HeroSection.tsx
+S-03
+Social Proof Bar
+Trust signal — live stats
+StatsBar.tsx
+S-04
+How It Works
+Explain the 3-mode product
+HowItWorks.tsx
+S-05
+Mode Deep Dives
+Learn / Build / Showcase details
+ModeCard.tsx ×3
+S-06
+Skill Verification System
+Justify AI credibility
+VerificationSection.tsx
+S-07
+Card Generator Teaser
+Zero-friction lead magnet
+CardTeaserSection.tsx
+S-08
+Testimonials
+Social proof from early users
+TestimonialSlider.tsx
+S-09
+Founding Mentor Banner
+Urgency — scarcity signal
+FoundingMentorBanner.tsx
+S-10
+Final CTA
+Last conversion push before footer
+FinalCTA.tsx
+S-11
+Footer
+Links, legal, socials
+Footer.tsx
+§2  Information Architecture & URL Map
+2.1  Routes in M-00
+Route
+Type
+Rendering
+Description
+/
+Page
+SSG
+Main landing page — all 11 sections
+/about
+Page
+SSG
+Team, mission, story. Simple static page.
+/privacy
+Page
+SSG
+Privacy Policy. Required for Razorpay + OAuth.
+/terms
+Page
+SSG
+Terms of Service.
+/blog
+Page
+SSG + ISR
+Optional post-launch. Placeholder for launch.
+/#how-it-works
+Anchor
+Client-nav
+Smooth scroll to S-04 within landing page.
+/#modes
+Anchor
+Client-nav
+Smooth scroll to S-05.
+/#card
+Anchor
+Client-nav
+Smooth scroll to S-07 (Card Generator teaser).
+2.2  Shared Components (used beyond M-00)
+Navbar and Footer are defined in M-00 but consumed by /card (M-12) and /showcase (M-07) as they are public routes. They live in components/public/ and must not import any auth-dependent stores.
+Component
+Used By
+Auth Dependency
+components/public/Navbar.tsx
+M-00, M-07 (/showcase), M-12 (/card)
+None — checks session client-side only to swap CTA text
+components/public/Footer.tsx
+M-00, M-07, M-12
+None
+components/public/CTAButton.tsx
+M-00 multiple sections
+None — plain anchor links to /login or /signup
+§3  Section-by-Section Specifications
+S-01
+Navbar
+GLOBAL HEADER
+Component
+components/public/Navbar.tsx
+Position
+Fixed top (position: sticky on mobile, fixed on desktop). z-index: 50.
+Background
+Starts fully transparent (over hero). Transitions to white/dark-mode bg with blur backdrop-filter on scroll > 80px.
+Left
+StackPair wordmark + logo mark. Clicks → / (home).
+Centre (desktop)
+Navigation links: How It Works, Modes, Verify Your Skills, Get Your Card. Smooth-scroll anchors.
+Right
+"Log In" ghost button → /login. "Get Started" primary button → /signup.
+Mobile
+Hamburger icon opens a full-height drawer with nav links + CTA buttons stacked.
+Auth-aware CTA
+If user is already logged in (session check via Supabase SDK, client-side only): replace "Get Started" with "Go to App" → /learn.
+M00-NAV-001
+MUST
+Navbar is present on every page in M-00 (/,  /about, /privacy, /terms, /card, /showcase).
+M00-NAV-002
+MUST
+Scroll-triggered background blur must NOT cause layout shift. Use position: fixed with padding-top on the page body equal to navbar height.
+M00-NAV-003
+MUST
+On mobile (< 768px), hamburger menu opens an animated drawer (slide from right). Drawer closes on backdrop click or Escape key.
+M00-NAV-004
+SHOULD
+Active section highlight: as user scrolls, the nav link corresponding to the visible section becomes brand-blue. Use IntersectionObserver.
+S-02
+Hero Section
+PRIMARY CTA
+The hero is the most important section. 80% of visitors who do not convert leave from here. Every word, button, and animation must serve one goal: get the click.
+Copy
+Headline
+Learn from peers.
+Build together.
+Get discovered.
+Sub-headline
+StackPair matches Indian developers by verified skill level — not self-reported resume bullets. 30-minute peer sessions, real projects, real signal.
+CTA Primary
+Get Started Free
+CTA Secondary
+See How It Works  →  (smooth-scroll to S-04)
+Below CTAs
+Small text: "No credit card needed  ·  Takes 3 minutes  ·  Free forever tier"
+Social proof snippet
+"Join 1,200+ developers already building on StackPair" — live count from stats API
+Visual Layout
+Desktop
+60/40 split. Left: headline, sub, CTAs, social snippet. Right: animated product mockup (SwipeCard UI demo).
+Mobile
+Single column. Headline → sub → CTAs → product mockup (below fold). No 60/40 split.
+Background
+Dark gradient (C.dark → #0F1F3D). Mesh gradient or subtle geometric pattern in brand blue at low opacity. NOT a solid colour.
+Product mockup
+Static illustration of 2–3 SwipeCards stacked at slight rotations. Shows: avatar, skill badge "TypeScript — Level 3", match score "94% match". No live API — all static SVG/HTML.
+Animation
+On load: headline words stagger in (opacity 0→1, y 20→0) over 800ms. CTA buttons bounce-in with a slight spring. Product mockup cards rotate to final position from a slightly tilted start state.
+M00-HERO-001
+MUST
+Hero headline is visible above the fold on all screen sizes including 375px width (iPhone SE). Do not let CTA buttons push below fold.
+M00-HERO-002
+MUST
+Primary CTA "Get Started Free" links to /signup. Secondary CTA scrolls to #how-it-works. Both are <a> tags, not <button>, for SEO crawlability.
+M00-HERO-003
+MUST
+Live user count ("Join X+ developers") is fetched from GET /public/stats on client-side after hydration. If fetch fails or takes > 2s, show fallback: "Join a growing community of developers".
+M00-HERO-004
+SHOULD
+Hero background uses CSS mesh gradient or a noise texture (SVG filter) — NOT a flat colour. Creates depth without hurting performance (pure CSS, no images).
+M00-HERO-005
+SHOULD
+Product mockup SwipeCards have a subtle hover interaction: hovering on the top card lifts it with a drop shadow (CSS transform + box-shadow transition). This signals interactivity.
+S-03
+Social Proof Bar
+TRUST SIGNAL
+A horizontal strip of 4–5 key stats immediately below the hero. Short, scannable, high-trust.
+Stats to Display
+Stat
+Value (launch targets)
+Icon
+Source
+Active Developers
+1,200+
+Users icon
+GET /public/stats
+Sessions Completed
+3,400+
+Video icon
+GET /public/stats
+Skills Verified by AI
+4,800+
+Shield-check
+GET /public/stats
+Projects Built
+280+
+Code-bracket
+GET /public/stats
+Avg. Session Rating
+4.8 / 5
+Star icon
+GET /public/stats
+M00-STATS-001
+MUST
+Stats animate with CountUp from 0 to value when section scrolls into viewport (IntersectionObserver). Duration: 1200ms, ease-out.
+M00-STATS-002
+MUST
+If GET /public/stats fails, show hardcoded launch-day baseline numbers. Never show zeros or error states to visitors.
+M00-STATS-003
+SHOULD
+Stats bar has a subtle border-top and border-bottom in brand blue at 20% opacity, separating it from hero and next section.
+S-04
+How It Works
+EXPLAINER
+A 3-step visual explainer. Converts confusion into confidence. Developers should feel "I know exactly what this product does" after reading this section.
+The 3 Steps
+Step
+Icon
+Headline
+Body Copy
+01
+Shield with checkmark
+Get Verified, Not Just Registered
+Connect your GitHub, LeetCode, and Kaggle. Our AI analyses your actual work and assigns you a skill level (0–5). No self-reporting. No resume fluff.
+02
+Users / Swipe cards
+Match with Real Peers
+Swipe through developers at your level. Match on the skills you want to learn. Book a 30-minute focused session — no endless DMs, no scheduling hell.
+03
+Rocket / Trophy
+Build, Showcase, Get Discovered
+Work on real projects with matched co-builders. Publish your work. Startups find you based on what you built — not what you claim.
+Layout Options
+Desktop
+3 cards side by side with a connecting horizontal line/arrow between them. Cards have step number (01, 02, 03) in large faded text behind the icon.
+Mobile
+Vertical stacked cards with a vertical connector line on the left side of the cards (timeline style).
+Animation
+Cards stagger in as they enter viewport: card 1 fades in, then card 2 (200ms delay), then card 3 (400ms delay). Connecting line draws itself with a CSS stroke-dashoffset animation.
+M00-HOW-001
+MUST
+Section has id="how-it-works" for the navbar smooth-scroll anchor link.
+M00-HOW-002
+MUST
+Step cards are accessible: each card has a visually distinct step number readable by screen readers (aria-label="Step 1 of 3: ...").
+M00-HOW-003
+SHOULD
+Connecting line between steps animates via IntersectionObserver — draws from left to right as section scrolls in.
+S-05
+Mode Deep Dives
+FEATURE DETAIL
+Three expandable/tabbed cards — one per StackPair mode. Each explains exactly what the user gets. Converts feature curiosity into signup intent.
+Learn Mode Card
+Headline
+Learn from someone who just figured it out
+Body
+Swipe through developers who recently mastered your target skill. Match on level. Book a 30-min session. AI takes notes and generates a summary. You get better, faster.
+Visual
+Animated SwipeCard mockup with real-looking peer data. Level badge, skill tags, match score ring.
+Key features
+• AI-verified skill matching  • 30-min focused video sessions  • Auto-generated session notes  • Bridge Points for every session you guide
+CTA
+"Start Learning" → /signup
+Accent colour
+Brand blue (C.brand)
+Build Mode Card
+Headline
+Build real things with the right co-founder
+Body
+Post your project idea. Get matched with developers whose skills complement yours — not just anyone with the same stack. Ship together. Publish your Build Story.
+Visual
+Static mockup of the Project Board (Kanban columns: To-Do, In Progress, Done) with task cards. Two avatar chips shown as "team".
+Key features
+• Skill-complementary matching  • Shared project board  • Community Showcase with Build Stories  • 70% revenue to the team on Build Story unlocks
+CTA
+"Start Building" → /signup
+Accent colour
+Green (C.green)
+Showcase Mode Card
+Headline
+Get discovered for what you built — not what you claim
+Body
+Your completed projects live on StackPair Showcase. Startups and hiring teams can find you by skill, level, and project type. One-tap to unlock your profile — no resume required.
+Visual
+Static mockup of a ShowcaseCard: project title, tech stack chips, team avatars, "Startup Access" unlock button greyed out.
+Key features
+• Passive discovery — toggle on when open  • Project-based signal, not resume  • Startup direct access at ₹199  • No job listings, no recruiter spam
+CTA
+"Get Discovered" → /signup
+Accent colour
+Purple (C.purple)
+Tab / Layout Behaviour
+M00-MODES-001
+MUST
+Section has id="modes" for smooth-scroll anchor. Desktop: 3 cards side by side in a grid. Mobile: tabbed interface with Learn/Build/Showcase tabs.
+M00-MODES-002
+MUST
+Each mode card has a distinct accent colour (left border or top band) matching the mode colour: Learn=blue, Build=green, Showcase=purple.
+M00-MODES-003
+SHOULD
+On desktop hover of a mode card, the card slightly scales up (scale 1.0 → 1.02) and the accent band brightens. Transition 200ms ease-out.
+M00-MODES-004
+SHOULD
+Static product mockups inside the cards are SVG illustrations, not screenshots. This avoids needing real data and keeps the bundle small.
+S-06
+Skill Verification System
+TRUST + DIFFERENTIATION
+The AI verification system is StackPair's core moat. This section makes it credible and concrete. Developers are skeptical — show the methodology, show the math.
+Headline & Copy
+Section headline
+Your level is earned, not claimed
+Sub-headline
+StackPair's AI analyses your actual work across 5 platforms. No surveys, no self-assessment. A Level 3 here means something — to peers and to startups.
+Platform Contribution Visual
+Display a visual breakdown of how the AI level score is calculated. Recommend a horizontal stacked bar or donut chart (SVG/CSS, not chart.js) showing:
+Platform
+Weight
+What is Analysed
+Visual Colour
+GitHub
+35%
+Commit frequency, repo quality, language diversity, contribution graph
+Brand blue
+LeetCode
+25%
+Problems solved by difficulty, acceptance rate, contest rating
+Green
+Kaggle
+15%
+Competition rank, notebooks, datasets, medals
+Purple
+Stack Overflow
+10%
+Reputation, answer quality, accepted answers, tags
+Orange
+Codeforces
+10%
+Rating, problems solved, contest performance
+Teal
+Portfolio
+5%
+Live project quality (if linked), README depth
+Muted
+Level 0–5 Explainer
+Horizontal level scale with label and description for each level. Shown as coloured circles or a progress bar with 6 stops.
+Level
+Label
+What It Means
+Colour
+0
+Getting Started
+Active on platforms, building fundamentals
+Grey
+1
+Foundations
+Consistent contributions, basic problem solving
+Green-200
+2
+Developing
+Projects shipped, moderate contest performance
+Green-400
+3
+Competent
+Strong portfolio, regular LeetCode, SC contributions
+Blue-400
+4
+Advanced
+Competitive programmer or significant OSS contributor
+Purple-400
+5
+Expert
+Top percentile across 3+ platforms
+Amber-500
+Industry Benchmark Callout
+Feature name
+Industry Benchmark Score
+Copy
+"Your level is benchmarked against real job descriptions. Every quarter, we scrape JD requirements across 1,000+ Indian tech roles and update what each level means in the market."
+Visual
+Small chart showing bell curve with "You" marker and "Industry Median" marker. Static SVG illustration.
+M00-VERIFY-001
+MUST
+Section has id="verify" for smooth-scroll. Platform breakdown uses a visual (CSS bar or SVG donut) — not just a text list.
+M00-VERIFY-002
+MUST
+All percentages (35%, 25%, etc.) must match the M-01/M-02 specification exactly. These are contractual with the backend.
+M00-VERIFY-003
+SHOULD
+Level scale (0–5) animates when scrolled into view: circles fill in left to right over 600ms with a 100ms stagger between levels.
+S-07
+Card Generator Teaser
+LEAD MAGNET
+The Portfolio Card Generator is the primary cold-start growth vector. This teaser section drives visitors to /card — a zero-friction, no-login tool that generates a shareable developer identity card. High-intent developers who use /card are then prompted to sign up.
+Copy
+Headline
+Your developer identity, in one card
+Sub-headline
+Generate a shareable dev card with your verified skills, GitHub stats, and platform handles. Free. No account needed. Takes 30 seconds.
+CTA
+"Generate My Card →" — links to /card (M-12). Opens in same tab.
+Supporting
+Small text: "Claim your permanent URL (skillpair.app/card/yourname) when you sign up"
+Visual
+Mockup
+Large, visually rich preview of a sample dev card. Shows: avatar, name "Rahul S.", "TypeScript — Level 3", GitHub 🟩 contribution graph (static), LeetCode "450 solved", skill tags.
+Animation
+Card mockup has a slow continuous float animation (CSS keyframe, y: 0→-8px→0, 3s infinite ease-in-out). Creates a sense of "this is alive".
+Background
+Dark section (#0D1117) to create contrast with the card. Subtle grid dot pattern behind the card.
+M00-CARD-001
+MUST
+Section has id="card". CTA links to /card — NOT to /signup. The card generator is the entry point, signup is the next step from /card.
+M00-CARD-002
+MUST
+Card mockup must NOT use real user data. All data shown is static. No API call in this section.
+M00-CARD-003
+SHOULD
+Track the "Generate My Card" click in PostHog with event name: landing_card_cta_click. This is a key funnel event.
+S-08
+Testimonials
+SOCIAL PROOF
+3–5 testimonials from early users, beta testers, or Founding Mentors. Each must feel specific and developer-authentic — not marketing-speak.
+Sample Testimonial Format
+Field
+Value / Notes
+Avatar
+Real or AI-generated avatar (consistent art style across all cards)
+Name
+First name + last initial: "Arjun K."
+Role
+e.g. "SDE-2 @ Razorpay" or "Final year, NIT Trichy"
+Quote
+40–80 words. Specific: mentions the skill, the session outcome, or the level system.
+Skill Tag
+Small badge showing skill they matched on: e.g. "Matched on: System Design"
+Sample Quotes (Placeholder — Replace with Real)
+"Arjun K., SDE-2"
+"I matched with someone who had just cracked a system design interview at a FAANG. 30 minutes with him was worth more than 10 hours of YouTube. The level matching actually works — I could tell immediately."
+"Priya M., NIT Trichy"
+"I was sceptical about AI-verified levels but after connecting my GitHub and LeetCode, the Level 2 I got felt accurate. My session partners were exactly the right difficulty — not too easy, not overwhelming."
+"Rahul S., Founding Mentor"
+"I've guided 12 sessions in the first month and earned 600 Bridge Points. Already unlocked my Build Story for the project I shipped with my match. It's a flywheel."
+Layout
+Desktop
+3 cards in a row. Each card: quote in quotes, avatar + name/role below, skill tag chip.
+Mobile
+Horizontal scroll carousel (overflow-x: auto, snap-type: x mandatory). 1 card visible at a time. Dot indicators below.
+M00-TEST-001
+MUST
+For launch: use real testimonials from beta users / Founding Mentors. If none available, use clearly-labelled "Early Tester" quotes. Do NOT fabricate verified claims.
+M00-TEST-002
+SHOULD
+Testimonial cards have a subtle left border in the mode colour of the skill they mention (e.g. System Design → blue = Learn mode).
+S-09
+Founding Mentor Banner
+URGENCY / SCARCITY
+A dedicated full-width section highlighting the Founding Mentor programme — 100 badges, limited slots, permanent recognition. Creates urgency and recruits the first wave of engaged users.
+Headline
+100 Founding Mentor Badges. 0 left after launch.
+Sub-headline
+The first 100 mentors who complete 5 sessions get a permanent Founding Mentor badge on their profile — visible to every match and every startup on Showcase.
+Counter
+"[X] slots remaining" — pulled from GET /public/stats. Counts down live.
+What they get
+• Permanent Founding Mentor badge
+• 200 bonus Bridge Points on activation
+• Early access to all future features
+• Shoutout in StackPair launch newsletter
+CTA
+"Claim Your Badge →" → /signup with ?referral=founding_mentor query param
+Background
+Amber/dark gradient. Amber accent (C.accent) as the dominant colour for this section only. Creates visual contrast and urgency.
+M00-FM-001
+MUST
+Founding Mentor CTA links to /signup?referral=founding_mentor. The F-01 signup flow reads this param and tags the user in PostHog + the DB.
+M00-FM-002
+MUST
+"X slots remaining" is fetched from GET /public/stats. If founding_mentor_slots_remaining === 0, replace banner with "Founding Mentor programme is full — join the waitlist."
+M00-FM-003
+SHOULD
+Slot counter has a red pulsing dot next to it (CSS pulse animation) to signal live/active data.
+S-10
+Final CTA Section
+CONVERSION
+One last conversion opportunity before the footer. Clean, minimal, high-contrast. Visitors who scrolled this far are high-intent.
+Headline
+Ready to learn like you mean it?
+Sub-headline
+Join developers who are building real things, getting verified, and getting discovered. Free to start. Takes 3 minutes.
+CTAs
+"Get Started Free" (primary) → /signup | "See How It Works" (ghost) → scrolls to #how-it-works
+Background
+Brand blue (C.brand). White text. Full-width. Min-height: 280px.
+Extra detail
+"No credit card required  ·  Free forever tier  ·  Delete anytime" — small white/60% opacity text below CTAs
+M00-CTA-001
+MUST
+Final CTA section background must be brand blue (not a gradient). White text only. High contrast for accessibility.
+M00-CTA-002
+MUST
+"Get Started Free" and "See How It Works" are <a> tags, not buttons. Ensure they appear in the sitemap for SEO.
+S-11
+Footer
+NAVIGATION + LEGAL
+Background
+C.dark (#0D1117). White text at 60–80% opacity.
+Logo row
+StackPair wordmark left, "Making peer learning credible" tagline right.
+Column 1 — Product
+How It Works, Learn Mode, Build Mode, Showcase Mode, Skill Verification, Pricing (→ /pricing)
+Column 2 — Tools
+Portfolio Card Generator (→ /card), Developer Showcase (→ /showcase), Bridge Points, Founding Mentor
+Column 3 — Company
+About (→ /about), Blog (→ /blog), Privacy Policy (→ /privacy), Terms of Service (→ /terms)
+Column 4 — Connect
+Twitter/X, LinkedIn, GitHub (StackPair org), Discord (community). Icon links only.
+Bottom bar
+"© 2026 StackPair. Made with ♥ in India.  |  Privacy  |  Terms"
+M00-FOOT-001
+MUST
+Footer must include links to /privacy and /terms — required for Razorpay payment integration and Google OAuth app verification.
+M00-FOOT-002
+MUST
+Footer is responsive: 4 columns on desktop, 2 columns on tablet, 1 column (stacked) on mobile.
+M00-FOOT-003
+SHOULD
+Footer links have a hover state: opacity 60% → 100% transition 150ms. No underline on hover — too noisy.
+§4  Public API Endpoint
+M-00 consumes exactly ONE backend endpoint. Everything else is static.
+4.1  GET /public/stats
+Method
+GET
+Auth
+None — fully public endpoint
+Cache
+Backend: 5-minute cache. Frontend: SWR/TanStack with staleTime: 5 * 60 * 1000.
+Called By
+StatsBar (S-03), Founding Mentor counter (S-09), Hero live count (S-02)
+Response
+{ "active_developers": 1248, "sessions_completed": 3412, "skills_verified": 4839, "projects_built": 284, "avg_session_rating": 4.8, "founding_mentor_slots_remaining": 67 }
+On Error
+Show hardcoded fallback numbers. Never show zeros or loading spinners in production — use fallback values in env vars.
+M00-API-001
+MUST
+GET /public/stats is called client-side only (after hydration). Do not block SSG rendering on this call.
+M00-API-002
+MUST
+Fallback values for all stats must be defined in environment variables (NEXT_PUBLIC_STAT_FALLBACK_*). Never hardcode fallback numbers in source code.
+§5  Component Specifications
+5.1  Full Component List
+Component File
+Section
+Type
+Notes
+components/public/Navbar.tsx
+S-01
+Shared
+Also used in M-07, M-12
+components/public/Footer.tsx
+S-11
+Shared
+Also used in M-07, M-12
+components/public/CTAButton.tsx
+All
+Primitive
+Primary and ghost variants
+components/landing/HeroSection.tsx
+S-02
+Section
+Static + client fetch for count
+components/landing/StatsBar.tsx
+S-03
+Section
+CountUp animation, fallback-safe
+components/landing/HowItWorks.tsx
+S-04
+Section
+3-step cards + animated connector
+components/landing/ModeCard.tsx
+S-05
+Component
+Reused ×3 for Learn/Build/Showcase
+components/landing/ModesSection.tsx
+S-05
+Section
+Grid/tabs wrapper for ModeCards
+components/landing/VerificationSection.tsx
+S-06
+Section
+Platform breakdown + level scale
+components/landing/CardTeaserSection.tsx
+S-07
+Section
+Card generator lead magnet
+components/landing/TestimonialSlider.tsx
+S-08
+Section
+Carousel on mobile, grid on desktop
+components/landing/TestimonialCard.tsx
+S-08
+Component
+Quote, avatar, skill tag
+components/landing/FoundingMentorBanner.tsx
+S-09
+Section
+Slot counter, amber CTA
+components/landing/FinalCTA.tsx
+S-10
+Section
+Brand-blue conversion strip
+app/page.tsx
+All
+Page
+Root — assembles all sections
+app/about/page.tsx
+—
+Page
+Static — team + mission
+app/privacy/page.tsx
+—
+Page
+Static — privacy policy
+app/terms/page.tsx
+—
+Page
+Static — terms of service
+lib/hooks/usePublicStats.ts
+S-02,03,09
+Hook
+Fetches GET /public/stats, fallback
+5.2  Key Component Details
+components/public/Navbar.tsx
+Props
+None — reads session via Supabase SDK client-side
+Scroll state
+useScrollPosition hook: tracks window.scrollY. isScrolled = scrollY > 80.
+CTA logic
+if (session && user.onboarding_state === "ACTIVE"): show "Go to App" → /learn. Else: show "Log In" + "Get Started".
+Mobile drawer
+useState: isMenuOpen. Framer Motion AnimatePresence: x: "100%" → x: 0 slide-in. Overlay backdrop with onClick close.
+Active link
+useIntersectionObserver: watches section IDs. Updates activeSection state. Nav link matching activeSection gets brand-blue colour.
+components/landing/StatsBar.tsx
+Data
+usePublicStats() hook — reads from /public/stats with SWR. Returns stats or fallback values.
+Animation
+useIntersectionObserver on the section root ref. When isVisible becomes true, start CountUp for each stat simultaneously.
+CountUp
+Uses CountUp from M-01 design system (components/animation/CountUp.tsx). Duration 1200ms, ease-out.
+Fallback
+process.env.NEXT_PUBLIC_STAT_FALLBACK_DEVELOPERS etc. defined in .env.local and Vercel env vars.
+components/landing/VerificationSection.tsx
+Platform bar
+Pure CSS horizontal stacked bar. Each platform is a flex segment with width proportional to its weight. No chart library.
+Level scale
+6 circles (0–5). Each circle: 48px diameter, coloured dot, label below, description tooltip on hover.
+Animation
+Level circles fill in sequentially on scroll-in: 0ms, 100ms, 200ms, 300ms, 400ms, 500ms delays using Framer Motion stagger.
+lib/hooks/usePublicStats.ts
+Returns
+{ stats: PublicStats, isLoading: boolean, error: Error | null }
+Fetching
+useSWR with key "/public/stats". revalidateOnFocus: false. refreshInterval: 300000 (5 min).
+Fallback
+If error or data === undefined: return fallback values from process.env.NEXT_PUBLIC_STAT_FALLBACK_*
+Types
+PublicStats: { active_developers, sessions_completed, skills_verified, projects_built, avg_session_rating, founding_mentor_slots_remaining }
+§6  Animation & Motion Specification
+All animations must respect prefers-reduced-motion. Wrap every Framer Motion transition with a conditional: if reducedMotion, set duration: 0 and disable position/scale transforms. Keep effects, remove motion.
+6.1  Animation Inventory
+Element
+Trigger
+Animation
+Duration
+Library
+Hero headline
+Page load
+Words stagger in: y 20→0, opacity 0→1
+800ms
+Framer Motion
+Hero CTA buttons
+Page load +200ms
+Spring scale 0.8→1.0, opacity 0→1
+400ms
+Framer Motion
+Hero SwipeCards
+Page load +400ms
+Rotate from -8deg to final position
+600ms
+Framer Motion
+Stats CountUp
+IntersectionObserver
+Number 0→target, ease-out
+1200ms
+CountUp (M-01)
+How It Works cards
+IntersectionObserver
+Stagger y 40→0, opacity 0→1
+500ms stagger 200ms
+Framer Motion
+Connector line
+IntersectionObserver
+stroke-dashoffset draw
+800ms
+CSS
+Mode cards (hover)
+Hover
+scale 1.0→1.02, shadow deepens
+200ms
+CSS transition
+Level scale circles
+IntersectionObserver
+Sequential fill: opacity 0→1
+100ms stagger
+Framer Motion
+Dev card mockup
+Continuous
+Float: y 0→-8→0 loop
+3s infinite
+CSS keyframe
+FM slot counter
+Continuous
+Pulsing red dot (opacity 1→0.3→1)
+1.5s infinite
+CSS keyframe
+Navbar bg
+Scroll > 80px
+opacity 0→1 (bg + backdrop-filter)
+300ms
+CSS transition
+Section entrance
+IntersectionObserver
+Sections: y 30→0, opacity 0→1
+400ms
+Framer Motion
+Testimonial carousel
+Drag/swipe
+Snap horizontal scroll
+Native
+CSS scroll-snap
+6.2  Performance Constraints
+M00-ANIM-001
+MUST
+No animation uses width, height, top, left, or margin as animated properties. Only transform and opacity — GPU-composited, no layout reflow.
+M00-ANIM-002
+MUST
+All scroll-triggered animations use IntersectionObserver, NOT scroll event listeners. Prevents main-thread blocking.
+M00-ANIM-003
+MUST
+Framer Motion is loaded via next/dynamic with ssr: false on landing page sections. Only the static shell (Navbar, hero text) is in the SSG bundle.
+M00-ANIM-004
+MUST
+All animations wrapped in if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) check. Duration set to 0ms if true.
+§7  SEO & Meta Specification
+7.1  Page-Level Meta
+Tag
+Value
+<title>
+StackPair — AI-Verified Peer Learning for Developers in India
+meta description
+Match with developers at your exact skill level. 30-min sessions, real project collaboration, and AI-verified levels using GitHub, LeetCode & Kaggle. Free to join.
+og:title
+StackPair — Learn. Build. Get Discovered.
+og:description
+Peer learning with AI-verified skill levels. Swipe. Session. Build together.
+og:image
+https://stackpair.app/og-image.png — 1200×630px static OG image
+og:url
+https://stackpair.app
+og:type
+website
+twitter:card
+summary_large_image
+twitter:site
+@stackpair
+canonical
+https://stackpair.app
+robots
+index, follow
+lang attribute
+<html lang="en-IN"> — Indian English
+7.2  Structured Data (JSON-LD)
+Include the following Schema.org structured data in a <script type="application/ld+json"> tag in app/page.tsx:
+Type: SoftwareApplication
+name: "StackPair"
+applicationCategory: "EducationApplication"
+operatingSystem: "Web"
+offers: { "@type": "Offer", "price": "0", "priceCurrency": "INR" }
+aggregateRating: { ratingValue: 4.8, reviewCount: [from stats] }
+7.3  Performance → SEO
+M00-SEO-001
+MUST
+Lighthouse SEO score ≥ 90. All images have descriptive alt text. All links have descriptive text (no "click here").
+M00-SEO-002
+MUST
+Heading hierarchy is correct: exactly one H1 per page (hero headline), H2 for sections, H3 for subsections. No skipped levels.
+M00-SEO-003
+MUST
+OG image at /og-image.png: 1200×630px, generated via @vercel/og. Shows StackPair branding + hero copy. Regenerated on deploy.
+M00-SEO-004
+MUST
+Sitemap at /sitemap.xml auto-generated by next-sitemap. Includes /, /about, /privacy, /terms, /card, /showcase.
+M00-SEO-005
+MUST
+robots.txt at /robots.txt: allow all, point to sitemap URL.
+M00-SEO-006
+SHOULD
+Target keywords in copy (naturally): "peer learning platform India", "developer skill verification", "coding buddy", "LeetCode partner", "GitHub-based developer level", "DSA prep with peers".
+§8  Performance Requirements
+Metric
+Target
+Strategy
+Lighthouse Performance
+≥ 95
+SSG, no blocking JS, deferred animations
+First Contentful Paint
+< 1.0s on 4G
+Static HTML served from Cloudflare CDN edge
+Largest Contentful Paint
+< 2.0s on 4G
+Hero text is LCP element — no image LCP
+Cumulative Layout Shift
+< 0.05
+Fixed Navbar height, reserved space for stats
+Time to Interactive
+< 2.5s on 4G
+Framer Motion lazy-loaded, no blocking scripts
+Total JS bundle
+< 120KB gzipped
+No charting library, minimal dependencies
+Total page weight
+< 500KB
+SVG illustrations, no hero image/video
+Fonts
+FOUT avoided
+font-display: swap, preload in <head>
+8.1  SSG & CDN Strategy
+M00-PERF-001
+MUST
+app/page.tsx is a Server Component with no async data fetching. All content is static at build time. No generateStaticParams, no revalidate — pure static.
+M00-PERF-002
+MUST
+Deploy to Cloudflare Pages or Vercel Edge. Landing page served from CDN edge node — no origin server hit on page load.
+M00-PERF-003
+MUST
+Hero section is rendered in the SSG HTML. No client-side skeleton. The first paint shows real content, not a loading state.
+M00-PERF-004
+MUST
+Framer Motion and all animation code is in Client Components, loaded only after the static shell is painted. Use next/dynamic with ssr: false.
+M00-PERF-005
+SHOULD
+SVG illustrations (SwipeCard mockup, Kanban mockup, dev card) are inlined SVGs, not external image files. Saves HTTP requests.
+§9  Responsive Design Specification
+Breakpoint
+Width
+Navbar
+Hero
+How It Works
+Modes
+Stats Bar
+Mobile S
+320–374px
+Hamburger
+1-col, compact
+Stacked list
+1 tab visible
+2×2 grid + 1
+Mobile M
+375–639px
+Hamburger
+1-col
+Stacked cards
+Tabbed
+2×2 + 1
+Tablet
+640–1023px
+Hamburger
+1-col
+3 cards wrap
+Tabbed 2-col
+3+2 grid
+Desktop
+1024–1279px
+Full links
+60/40 split
+3 cards row
+3 cards row
+5 in a row
+Desktop L
+1280px+
+Full links
+60/40 split
+3 cards row
+3 cards row
+5 in a row
+M00-RESP-001
+MUST
+Test at 320px width (Galaxy S5, oldest viable target). No horizontal overflow. All CTAs tappable (min 44×44px touch target).
+M00-RESP-002
+MUST
+No horizontal scrollbar at any breakpoint. Overflow-x: hidden on body.
+M00-RESP-003
+MUST
+Text never smaller than 14px (28 DXA) on any breakpoint. Line-height ≥ 1.5 for body text.
+M00-RESP-004
+SHOULD
+Testimonials section uses CSS scroll-snap on mobile (overflow-x: auto, scroll-snap-type: x mandatory) for a native carousel feel with zero JS.
+§10  Accessibility Requirements
+M00-ACC-001
+MUST
+WCAG 2.1 AA compliance. Colour contrast ≥ 4.5:1 for body text, ≥ 3:1 for large text. Verify with Lighthouse or axe.
+M00-ACC-002
+MUST
+All images and SVG illustrations have descriptive alt text or aria-hidden="true" if purely decorative.
+M00-ACC-003
+MUST
+All interactive elements (buttons, links, inputs) have a visible focus ring. No outline: none without a custom replacement.
+M00-ACC-004
+MUST
+Navbar mobile drawer traps focus when open. Tab key cycles through drawer items only. Escape key closes the drawer.
+M00-ACC-005
+MUST
+Skip to main content link: first focusable element on the page. Visually hidden until focused. Links to id="main-content" on the hero section.
+M00-ACC-006
+MUST
+Carousel / testimonials: each card has role="listitem", the container has role="list". Navigation dots have aria-label="Go to testimonial [n]".
+M00-ACC-007
+MUST
+Smooth-scroll anchor links: do NOT use CSS scroll-behavior: smooth globally. Apply only to the specific anchor click. Respects prefers-reduced-motion.
+M00-ACC-008
+SHOULD
+Heading structure validated with a screen reader (NVDA/VoiceOver) during QA. H1 → H2 → H3 hierarchy must be logical.
+§11  Copy & Brand Voice Guidelines
+StackPair speaks to developers, not to HR departments. The voice is: direct, technical, confident, and slightly irreverent. Not hype-y, not corporate. A senior engineer explaining something they genuinely believe in.
+11.1  Voice Principles
+Direct: "30 minutes with a real peer" — not "an immersive collaborative learning experience"
+Technical specificity: "connects your GitHub, LeetCode, and Kaggle" — not "your coding profiles"
+Honest about limitations: "takes 3 minutes" — not "instant"
+India-aware: reference "Indian tech roles", "placement season", "DSA prep" — speak to the market
+No buzzwords: avoid "AI-powered", "seamless", "holistic", "gamified", "ecosystem"
+11.2  Approved Terminology
+Use This
+Not This
+Verified skill level
+"AI-powered assessment"
+Peer learning session
+"Learning experience"
+Connect your GitHub
+"Integrate your developer profile"
+Skill Level 0–5
+"Rating" or "Score"
+Bridge Points
+"Rewards" or "Credits"
+Get discovered by startups
+"Career opportunities"
+Co-builder
+"Collaborator" or "Teammate"
+Build Story
+"Project report"
+Indian developer market
+"Emerging markets" or "Global"
+11.3  CTA Copy Conventions
+M00-COPY-001
+MUST
+Primary CTAs use action verbs: "Get Started", "Generate My Card", "Claim Your Badge". Not nouns: "Sign Up" is acceptable but weak.
+M00-COPY-002
+MUST
+"Free" appears near every signup CTA. Remove any ambiguity about whether signing up costs money.
+M00-COPY-003
+SHOULD
+Avoid exclamation marks everywhere except the Founding Mentor section (urgency) and the Hero (first impression).
+§12  Testing Requirements
+12.1  Lighthouse Audits
+Category
+Target Score
+Key Checks
+Performance
+≥ 95
+LCP < 2.5s, CLS < 0.1, FID < 100ms, FCP < 1.8s
+Accessibility
+≥ 95
+Alt text, contrast, focus indicators, ARIA
+Best Practices
+≥ 95
+HTTPS, no deprecated APIs, correct image formats
+SEO
+≥ 95
+Meta tags, canonical, robots, structured data
+12.2  Cross-Browser Testing
+Browser
+Version
+Priority
+Chrome
+Latest
+P0 — primary Indian developer browser
+Safari
+Latest
+P0 — iOS PWA + MacBook users
+Firefox
+Latest
+P1
+Edge
+Latest
+P1
+Chrome Android
+Latest
+P0 — mobile-first Indian audience
+Safari iOS
+15+
+P0 — iOS PWA behaviour
+12.3  Visual Regression
+Screenshot tests (Playwright) for: desktop hero, mobile hero, Navbar open/closed, all 3 mode cards, footer.
+Run on every PR. Block merge on any diff > 0.1% of pixels.
+12.4  E2E Tests (Playwright)
+Visitor lands on / → CTA "Get Started Free" → redirects to /signup (F-01)
+Visitor clicks "See How It Works" → page scrolls smoothly to #how-it-works section
+Visitor clicks "Generate My Card" → redirects to /card (M-12)
+Founding Mentor CTA → redirects to /signup?referral=founding_mentor
+Mobile: hamburger opens → all links visible → close on backdrop click
+Logged-in user visits / → Navbar shows "Go to App" instead of "Get Started"
+GET /public/stats fails → fallback numbers shown in StatsBar — no zeros
+12.5  Analytics Events (PostHog)
+Event Name
+Trigger
+Properties
+landing_page_view
+Page load
+source (utm_source), medium (utm_medium)
+hero_cta_click
+"Get Started Free" click (S-02)
+position: "hero"
+how_it_works_cta_click
+"See How It Works" click
+—
+mode_card_cta_click
+Any mode CTA click
+mode: "learn"|"build"|"showcase"
+landing_card_cta_click
+"Generate My Card" click (S-07)
+—
+founding_mentor_click
+"Claim Your Badge" click (S-09)
+slots_remaining: number
+final_cta_click
+"Get Started Free" click (S-10)
+position: "final"
+navbar_signup_click
+Navbar "Get Started" click
+—
+scroll_depth_50
+User scrolls 50% of page
+—
+scroll_depth_100
+User scrolls 100% of page
+—
+§13  Acceptance Criteria
+M-00 is considered shippable when ALL of the following pass:
+13.1  Performance
+M00-AC-001
+MUST
+Lighthouse Performance score ≥ 95 on mobile (Moto G4 throttled profile in Chrome DevTools).
+M00-AC-002
+MUST
+LCP element (hero headline) paints within 2.0 seconds on a simulated 4G connection.
+M00-AC-003
+MUST
+CLS score < 0.05. Verify by loading the page and checking the CLS badge in Chrome DevTools → Performance.
+M00-AC-004
+MUST
+No horizontal scroll at 320px width (Galaxy S5 preset in DevTools).
+13.2  Functionality
+M00-AC-005
+MUST
+"Get Started Free" in hero → /signup. "Log In" in navbar → /login. "Generate My Card" → /card. All verified in Playwright.
+M00-AC-006
+MUST
+GET /public/stats integration: stats shown in StatsBar, hero count, and Founding Mentor counter. Fallback shown on simulated API failure.
+M00-AC-007
+MUST
+Smooth-scroll: clicking "How It Works" in navbar or hero CTA scrolls to #how-it-works. Tested in Chrome and Safari.
+M00-AC-008
+MUST
+Navbar mobile drawer: opens on hamburger click, closes on backdrop click and Escape key. Focus trapped inside while open.
+M00-AC-009
+MUST
+Logged-in user (Supabase session exists) sees "Go to App" in Navbar instead of "Get Started". Tested by setting a mock session.
+13.3  SEO & Accessibility
+M00-AC-010
+MUST
+Lighthouse Accessibility score ≥ 95. Zero critical axe violations.
+M00-AC-011
+MUST
+Lighthouse SEO score ≥ 90. <title>, meta description, og:image, canonical all present and correct.
+M00-AC-012
+MUST
+/sitemap.xml exists and includes all M-00 routes. Verified by fetching the URL after deploy.
+M00-AC-013
+MUST
+Skip to main content link visible on Tab key press. Verified via keyboard-only navigation.
+13.4  Animations
+M00-AC-014
+MUST
+With prefers-reduced-motion: reduce set in OS: ALL animations are disabled. Page is fully usable with no motion. Verified in macOS Accessibility settings.
+M00-AC-015
+SHOULD
+Hero headline stagger animation completes within 800ms of first meaningful paint. Verified via Performance tab recording.
+§14  File Structure
+All paths relative to the Next.js project root. Files marked ★ are exclusive to M-00.
+File Path
+Type
+SSG/CSR
+Notes
+app/page.tsx
+Page ★
+SSG
+Root — assembles all landing sections
+app/about/page.tsx
+Page ★
+SSG
+Static team + mission page
+app/privacy/page.tsx
+Page ★
+SSG
+Privacy policy — required for OAuth + Razorpay
+app/terms/page.tsx
+Page ★
+SSG
+Terms of service
+components/public/Navbar.tsx
+Component
+CSR
+Shared with M-07, M-12. Auth-aware CTA.
+components/public/Footer.tsx
+Component
+SSG
+Shared with M-07, M-12. Pure static.
+components/public/CTAButton.tsx
+Component ★
+SSG
+Primary and ghost CTA variants for public pages
+components/landing/HeroSection.tsx
+Section ★
+CSR
+Stagger animation + live count fetch
+components/landing/StatsBar.tsx
+Section ★
+CSR
+CountUp animation, usePublicStats hook
+components/landing/HowItWorks.tsx
+Section ★
+CSR
+3-step cards + IntersectionObserver animation
+components/landing/ModeCard.tsx
+Component ★
+CSR
+Reused ×3. Props: mode, headline, body, cta, visual
+components/landing/ModesSection.tsx
+Section ★
+CSR
+Grid desktop, tabs mobile
+components/landing/VerificationSection.tsx
+Section ★
+CSR
+Platform bar + level scale
+components/landing/CardTeaserSection.tsx
+Section ★
+CSR
+Lead magnet — links to /card
+components/landing/TestimonialCard.tsx
+Component ★
+SSG
+Quote, avatar, skill tag
+components/landing/TestimonialSlider.tsx
+Section ★
+CSR
+Grid desktop, CSS carousel mobile
+components/landing/FoundingMentorBanner.tsx
+Section ★
+CSR
+Slot counter from usePublicStats
+components/landing/FinalCTA.tsx
+Section ★
+SSG
+Static blue strip — no dynamic data
+lib/hooks/usePublicStats.ts
+Hook ★
+CSR
+SWR fetch of GET /public/stats + fallback
+public/og-image.png
+Asset ★
+—
+1200×630px OG image, generated via @vercel/og on build
+public/sitemap.xml
+Config ★
+—
+Auto-generated by next-sitemap on build
+public/robots.txt
+Config ★
+—
+Allow all crawlers, link to sitemap
+StackPair — Frontend M-00 PRD v1.0.0  ·  Landing Page  ·  March 2026

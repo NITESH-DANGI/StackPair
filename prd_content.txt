@@ -1,0 +1,1362 @@
+STACKPAIR
+Product Requirements Document
+Frontend Module F-01
+Authentication & Onboarding
+Version
+v1.0.0
+Backend Sync
+M-01 (Auth & User Mgmt)
+Date
+March 2026
+Frontend Stack
+Backend Contract
+Next.js 14 (App Router)
+Zustand + TanStack Query
+Tailwind CSS + Framer Motion
+Supabase Auth SDK
+FastAPI (Python) — Backend M-01
+22 endpoints: Auth(7) + Users(7) + Onboarding(5) + Admin(4) + Internal(1)
+JWT via PyJWT 2.12.1 — Supabase Legacy JWT Secret
+Email OTP via Resend + GitHub + Google OAuth
+§1  Overview & Objectives
+Frontend Module F-01 implements the complete authentication and onboarding experience for StackPair. It covers every user interaction from first landing on the app through to being in the ACTIVE state with skills configured, platforms connected, and the level computation job triggered. This module is the entry point to the entire product — every other frontend module depends on the state it produces.
+1.1  Objectives
+Implement Email OTP authentication flow with 60-second countdown and auto-submit
+Implement GitHub OAuth and Google OAuth as alternative sign-in paths
+Guide users through a 4-step onboarding wizard that maps 1:1 to the backend onboarding_state enum
+Enforce the M-01 rule that primary_skill is NEVER collected from or editable by the user
+Wire all 22 M-01 backend endpoints to the correct frontend triggers
+Produce a JWT-authenticated user session that all product modules can consume via useAuthStore
+Handle all error states, validation failures, and edge cases gracefully with clear feedback
+1.2  Scope
+In Scope: /login, /signup, /verify, /onboarding/profile, /onboarding/skills, /onboarding/platforms, /onboarding/welcome, useAuthStore, authGuard, onboardingGuard, sessionRefresh, all M-01 API integrations.
+Out of Scope: Profile editing (F-03), skill level display (F-03), swipe deck (F-04), any M-02 AI verification logic — F-01 only triggers the M-02 job, it does not implement it.
+1.3  Success Criteria
+A new user can complete signup-to-ACTIVE state in under 3 minutes
+OTP delivery confirmed within 10 seconds of request
+All 5 onboarding_state transitions trigger the correct backend PATCH/POST and advance correctly
+Zero instances of primary_skill being presented as editable in this module
+JWT refresh fires on every window focus event and updates sessions.last_seen_at
+All 22 M-01 endpoints integrated with correct HTTP methods, headers, and payloads
+§2  Backend Contract Reference — M-01
+This section defines the exact API contract that F-01 consumes. Every frontend call must match method, path, and payload exactly as specified here. The backend is FastAPI on Python with PyJWT 2.12.1.
+2.1  Authentication — 7 Endpoints
+POST /auth/email/otp
+Method
+POST
+Endpoint
+/auth/email/otp
+Called By
+Login page (email step) + Signup page
+Description
+Request a 6-digit OTP to be delivered via Resend email. Rate-limited: 1 request/minute per email.
+Request Body
+{ "email": "user@example.com" }
+Success Response
+200 { "message": "OTP sent", "expires_in": 60 }
+Error Codes
+429 Rate limited | 422 Invalid email format
+POST /auth/email/verify
+Method
+POST
+Endpoint
+/auth/email/verify
+Called By
+Verify OTP page (after OTP input)
+Description
+Verify 6-digit OTP. Returns JWT access token + Supabase session on success. Creates user row if new signup.
+Request Body
+{ "email": "user@example.com", "otp": "123456" }
+Success Response
+200 { "access_token": "...", "token_type": "bearer", "user": { id, email, username, onboarding_state, ... } }
+Error Codes
+400 Invalid OTP | 410 OTP expired | 422 Validation error
+GET /auth/github
+Method
+GET
+Endpoint
+/auth/github
+Called By
+GitHub OAuth button click
+Description
+Initiates GitHub OAuth flow. Frontend redirects to this URL. Backend handles callback, exchanges code, creates session, redirects to /onboarding/profile or /learn based on onboarding_state.
+Request Body
+No body — redirect
+Success Response
+302 Redirect to /onboarding/* or /learn with session cookie set
+Error Codes
+400 OAuth error | 500 GitHub API failure
+GET /auth/google
+Method
+GET
+Endpoint
+/auth/google
+Called By
+Google OAuth button click
+Description
+Initiates Google OAuth flow. Same pattern as GitHub. Frontend redirects to this URL.
+Request Body
+No body — redirect
+Success Response
+302 Redirect to /onboarding/* or /learn
+Error Codes
+400 OAuth error | 500 Google API failure
+POST /auth/refresh
+Method
+POST
+Endpoint
+/auth/refresh
+Called By
+sessionRefresh.ts on window focus + TanStack Query refetchOnWindowFocus
+Description
+Refresh JWT access token using the Supabase refresh token stored in session. CRITICAL: M-01 Fix2 — this call updates sessions.last_seen_at in the sessions table. Must fire on every window focus event.
+Request Body
+{ "refresh_token": "..." } — read from Supabase session
+Success Response
+200 { "access_token": "...", "user": { ... } }
+Error Codes
+401 Invalid/expired refresh token — redirect to /login
+POST /auth/logout
+Method
+POST
+Endpoint
+/auth/logout
+Called By
+Shell logout button
+Description
+Revoke current session. M-01 Fix2: sets revoked_at on the session row. Clears all Zustand stores and Supabase session.
+Request Body
+No body — uses JWT in Authorization header
+Success Response
+200 { "message": "Logged out" }
+Error Codes
+401 Already invalid session — still clear local state
+GET /auth/me
+Method
+GET
+Endpoint
+/auth/me
+Called By
+authGuard, onboardingGuard, page load checks
+Description
+Get the authenticated user. Returns full user object including onboarding_state and primary_skill (may be null). Used to route users to the correct step and gate the swipe deck.
+Request Body
+No body — uses JWT in Authorization header
+Success Response
+200 { "id": "...", "email": "...", "username": "...", "display_name": "...", "onboarding_state": "REGISTERED|...|ACTIVE", "primary_skill": "TypeScript"|null, "secondary_skills": [], "bridge_points": 0, "user_role": "user|admin" }
+Error Codes
+401 Unauthenticated — redirect to /login
+2.2  Users — 7 Endpoints
+GET /users/me
+Method
+GET
+Endpoint
+/users/me
+Called By
+Profile page own profile, settings page load
+Description
+Get full profile of the authenticated user. Richer than /auth/me — includes user_profile, social_links.
+Request Body
+No body — uses JWT
+Success Response
+200 { user, profile: { bio, avatar_url, ... }, social_links: { github_username, ... } }
+Error Codes
+401 Unauthenticated
+PUT /users/me
+Method
+PUT
+Endpoint
+/users/me
+Called By
+Profile edit page, settings/profile page
+Description
+Update display_name, bio, avatar_url, social_links, secondary_skills, availability_status. IMPORTANT: primary_skill and skill_level are NOT accepted fields — backend rejects them. Frontend must not send them.
+Request Body
+{ "display_name": "...", "bio": "...", "secondary_skills": ["React", "Python"], "availability_status": "available" }
+Success Response
+200 { updated user object }
+Error Codes
+400 primary_skill/skill_level field rejected | 422 Validation | 409 Username taken
+GET /users/[username]
+Method
+GET
+Endpoint
+/users/[username]
+Called By
+Public profile page /profile/[username]
+Description
+Get any user's public profile by username. No auth required.
+Request Body
+No body
+Success Response
+200 { user, profile, social_links, skill_level (if set), session_count }
+Error Codes
+404 User not found
+GET /users/check-username
+Method
+GET
+Endpoint
+/users/check-username?username=nitesh
+Called By
+Signup page (debounced on input blur)
+Description
+Check if a username is available before submission. Debounce: 500ms. Only call if username length ≥ 3 and matches /^[a-z0-9_]{3,30}$/
+Request Body
+Query param: ?username=
+Success Response
+200 { "available": true|false, "suggestion": "nitesh_dev" }
+Error Codes
+422 Invalid username format
+POST /users/me/avatar
+Method
+POST
+Endpoint
+/users/me/avatar
+Called By
+Avatar upload in onboarding step 1 (profile) + profile edit
+Description
+Upload avatar image. Backend uploads to Cloudflare R2 and returns URL. Max 2MB, formats: JPEG/PNG/WebP.
+Request Body
+multipart/form-data: file field
+Success Response
+200 { "avatar_url": "https://cdn.stackpair.app/avatars/..." }
+Error Codes
+413 File too large | 415 Unsupported format | 422 Validation
+POST /users/me/level-sync
+Method
+POST
+Endpoint
+/users/me/level-sync
+Called By
+LevelSyncButton on profile (rate-limited to 1/hour)
+Description
+Manually trigger M-02 re-verification job. Used after adding new platform connections or after long inactivity. Frontend shows cooldown timer after trigger.
+Request Body
+No body — uses JWT
+Success Response
+200 { "job_id": "...", "eta_seconds": 120 }
+Error Codes
+429 Rate limited — returns next_allowed_at timestamp
+GET /users/[username]/sessions
+Method
+GET
+Endpoint
+/users/[username]/sessions?page=1&limit=10
+Called By
+SessionHistory component on profile page
+Description
+Paginated session history for a user.
+Request Body
+Query params: page, limit
+Success Response
+200 { "sessions": [...], "total": 42, "page": 1 }
+Error Codes
+404 User not found | 401 Private profile
+2.3  Onboarding — 5 Endpoints
+PATCH /onboarding/profile
+Method
+PATCH
+Endpoint
+/onboarding/profile
+Called By
+Onboarding step 1: /onboarding/profile CTA
+Description
+Save profile info. Advances onboarding_state from REGISTERED → PROFILE_COMPLETE. Can re-call (idempotent).
+Request Body
+{ "display_name": "Nitesh Kumar", "username": "nitesh_k", "bio": "...", "avatar_url": "..." }
+Success Response
+200 { "onboarding_state": "PROFILE_COMPLETE", "user": { ... } }
+Error Codes
+409 Username taken | 422 Validation error
+PATCH /onboarding/skills
+Method
+PATCH
+Endpoint
+/onboarding/skills
+Called By
+Onboarding step 2: /onboarding/skills CTA
+Description
+Save secondary_skills. Advances PROFILE_COMPLETE → SKILLS_SET. PRIMARY SKILL IS NOT ACCEPTED HERE. Array max 5 items.
+Request Body
+{ "secondary_skills": ["React", "Python", "SQL"] }
+Success Response
+200 { "onboarding_state": "SKILLS_SET", "secondary_skills": [...] }
+Error Codes
+400 primary_skill field rejected | 422 Array > 5 items
+POST /onboarding/connect-platform
+Method
+POST
+Endpoint
+/onboarding/connect-platform
+Called By
+Onboarding step 3: /onboarding/platforms platform connect buttons
+Description
+Register an OAuth platform connection. Triggers the async M-02 skill level computation job in the background. Called once per platform the user connects. GitHub is required; LeetCode/Kaggle optional.
+Request Body
+{ "platform": "github|leetcode|kaggle|stackoverflow|codeforces", "oauth_token": "...", "platform_username": "nitesh_k" }
+Success Response
+200 { "platform": "github", "connected": true, "job_id": "m02-job-abc" }
+Error Codes
+409 Platform already connected | 400 OAuth token invalid
+PATCH /onboarding/goals
+Method
+PATCH
+Endpoint
+/onboarding/goals
+Called By
+Onboarding step 3: /onboarding/platforms (goals collected here)
+Description
+Save learning goals. Advances SKILLS_SET → GOALS_SET → ACTIVE. This is the final onboarding step trigger.
+Request Body
+{ "goals": ["dsa_prep", "system_design", "portfolio_build"] }
+Success Response
+200 { "onboarding_state": "ACTIVE", "bridge_points": 50 }
+Error Codes
+422 Validation | 400 No goals provided
+GET /onboarding/status
+Method
+GET
+Endpoint
+/onboarding/status
+Called By
+Welcome page + /learn polling while primary_skill=null
+Description
+Check current onboarding_state and whether M-02 has completed (primary_skill set). Frontend polls this every 10s on welcome page, every 15s on /learn until primary_skill is non-null.
+Request Body
+No body — uses JWT
+Success Response
+200 { "onboarding_state": "ACTIVE", "primary_skill": "TypeScript"|null, "level_job_status": "pending|running|complete|failed" }
+Error Codes
+401 Unauthenticated
+2.4  Admin — 4 Endpoints (Context Only)
+Admin endpoints are consumed by F-14 Admin Panel, not F-01. Listed here for completeness. F-01 has no admin UI.
+Method
+Endpoint
+F-01 Usage
+GET
+/admin/users
+Not used in F-01
+PUT
+/admin/users/[id]
+Not used in F-01
+GET
+/admin/reports
+Not used in F-01
+PATCH
+/admin/reports/[id]
+Not used in F-01
+2.5  Internal Endpoint (Read-Only Context)
+PUT /internal/users/{id}/skill-level — Protected by INTERNAL_SERVICE_TOKEN (NOT user JWT). Called ONLY by the M-02 backend worker to set primary_skill and skill_level 0–5. The frontend MUST NEVER call this endpoint and MUST NEVER expose primary_skill as an editable field. This is the hardest constraint in F-01.
+§3  Authentication Flow Specification
+StackPair uses three auth methods: Email OTP, GitHub OAuth, and Google OAuth. There are NO passwords anywhere in the system. Do not build password fields, forgot-password pages, or reset-password pages.
+3.1  Email OTP Flow
+Step 1 — Email Entry
+Route
+/login  or  /signup
+Onboarding State
+Unauthenticated
+Screen
+Email Entry Screen
+The login and signup screens are functionally identical at the email-entry stage. The distinction (new vs returning user) is resolved server-side on OTP verification. Frontend shows one email field.
+UI Elements
+StackPair logo (centred, top)
+Headline: "Sign in to StackPair" (login) / "Join StackPair" (signup)
+Email input field — type="email", autocomplete="email", autofocus on mount
+CTA button: "Send Code" — primary variant, full-width
+GitHub OAuth button (OAuthButton component)
+Google OAuth button (OAuthButton component)
+Small divider text: "or continue with email"
+Link to toggle: "New here? Create account" / "Already have an account? Sign in"
+Validation Rules
+Field
+Rule
+Error Message
+When
+email
+Required
+Email is required
+On submit
+email
+Valid RFC 5322 format
+Enter a valid email address
+On blur + on submit
+email
+Max 254 chars
+Email too long
+On change
+Interactions
+User types email → frontend validates format on blur
+User clicks "Send Code" → button enters loading state → POST /auth/email/otp
+On 200: navigate to /verify with email passed as URL param (encoded) or session storage
+On 429 (rate limited): show inline error "You can request a new code in [X] seconds" with countdown
+On 422: show inline error "Please enter a valid email"
+Step 2 — OTP Verification
+Route
+/verify
+Onboarding State
+Unauthenticated (email in state)
+Screen
+OTP Verification Screen
+UI Elements
+Headline: "Check your email" + email address (partially masked: n****@domain.com)
+OTPInput component — 6 separate single-digit cells, auto-focus first cell on mount
+OTPCountdown — ProgressBar counting down from 60 to 0
+Below timer: "Resend code" link — disabled during cooldown, enabled on expiry
+"← Back" link to return to email entry
+OTPInput Component Behaviour
+F01-AUTH-001
+MUST
+OTPInput renders as exactly 6 separate <input type="text" maxLength={1}> cells with individual refs.
+F01-AUTH-002
+MUST
+Focus auto-advances to the next cell on every valid digit entry.
+F01-AUTH-003
+MUST
+Paste of a 6-character string fills all cells and triggers auto-submit.
+F01-AUTH-004
+MUST
+Backspace on an empty cell moves focus to the previous cell.
+F01-AUTH-005
+MUST
+Auto-submit fires POST /auth/email/verify as soon as the 6th digit is entered. No manual submit button.
+F01-AUTH-006
+MUST
+After OTP expires (60s): disable all cells, show "Code expired" message, enable "Resend code".
+F01-AUTH-007
+MUST
+On invalid OTP (400): clear all cells, refocus first cell, show inline error "Incorrect code. Try again." Remaining attempts shown if backend provides them.
+F01-AUTH-008
+SHOULD
+On mobile, trigger numeric keyboard with inputMode="numeric" pattern="[0-9]*".
+Success Path
+POST /auth/email/verify → 200 → receive access_token + user object
+Store Supabase session (access_token, refresh_token) via Supabase SDK
+Populate useAuthStore with user object
+Read user.onboarding_state → route to correct step (see §5 Routing)
+3.2  GitHub OAuth Flow
+Route
+/login  (GitHub button)
+Onboarding State
+Unauthenticated
+Screen
+GitHub OAuth
+GitHub OAuth is a full-page redirect flow. The frontend does not handle the OAuth handshake — it redirects to the backend URL which manages the GitHub callback.
+Flow
+User clicks GitHub OAuth button → window.location.href = process.env.NEXT_PUBLIC_API_URL + "/auth/github"
+Backend redirects to GitHub authorization page
+GitHub redirects to backend callback URL with code
+Backend exchanges code for token, creates/updates user, sets session cookie, redirects to frontend
+Frontend receives redirect to /onboarding/profile (new user) or /learn (returning ACTIVE user)
+Read onboarding_state from URL param or call GET /auth/me → route accordingly
+F01-AUTH-009
+MUST
+GitHub OAuth button must redirect to backend URL, NOT implement OAuth client-side. The GitHub client secret must never be in the frontend.
+F01-AUTH-010
+MUST
+After OAuth redirect lands on frontend, call GET /auth/me to get user state before any routing decision.
+3.3  Google OAuth Flow
+Identical pattern to GitHub OAuth. Button redirects to GET /auth/google. Same backend-driven handshake. Same post-redirect GET /auth/me check.
+3.4  Session Management
+JWT Storage
+F01-AUTH-011
+MUST
+JWT is stored and managed by the Supabase Auth SDK. Do NOT manually store access_token in localStorage. The SDK handles token persistence and expiry.
+F01-AUTH-012
+MUST
+POST /auth/refresh fires on every window focus event. Wired via TanStack Query global refetchOnWindowFocus config. This updates sessions.last_seen_at (M-01 Fix2).
+F01-AUTH-013
+MUST
+On 401 response from any API call: clear useAuthStore, call Supabase signOut(), redirect to /login.
+F01-AUTH-014
+MUST
+On logout: POST /auth/logout → clear all Zustand stores → Supabase signOut() → redirect /login. The backend sets revoked_at on the session row (M-01 Fix2).
+Authorization Header
+All authenticated API calls must include: Authorization: Bearer <access_token>. The Supabase SDK provides the current access token via supabase.auth.getSession(). Create an Axios/fetch interceptor that injects this header on every request.
+§4  Onboarding Flow Specification
+Onboarding is a linear 4-step wizard. Each step maps to exactly one onboarding_state value. Completing a step calls the corresponding backend endpoint which advances the state. The frontend reads the current state on every page load and routes accordingly.
+4.1  State Machine Overview
+State
+Frontend Route(s)
+Backend API Call
+Next State
+Notes
+REGISTERED
+/login → /verify → /onboarding/profile
+PATCH /onboarding/profile
+PROFILE_COMPLETE
+Collect display_name, username, bio, avatar
+PROFILE_COMPLETE
+/onboarding/skills
+PATCH /onboarding/skills
+SKILLS_SET
+secondary_skills only, max 5. NO primary skill.
+SKILLS_SET
+/onboarding/platforms
+POST /onboarding/connect-platform + PATCH /onboarding/goals
+GOALS_SET
+Connect GitHub (required). Triggers async M-02 level job.
+GOALS_SET
+/onboarding/welcome
+Auto (after goals saved)
+ACTIVE
+Welcome screen + Bridge Points animation.
+ACTIVE
+All product routes (/learn, /build…)
+Any product API
+—
+If primary_skill=null → LevelPendingScreen shown in /learn.
+4.2  StepIndicator Component
+F01-ONB-001
+MUST
+StepIndicator renders 4 steps, not 5. Steps: Profile → Skills → Platforms → Welcome.
+F01-ONB-002
+MUST
+Completed steps shown with a filled checkmark (green). Current step highlighted (brand blue). Future steps grey.
+F01-ONB-003
+MUST
+StepIndicator reads progress from user.onboarding_state — it does NOT derive progress from URL alone.
+4.3  Step 1 — Profile Setup
+Route
+/onboarding/profile
+Onboarding State
+REGISTERED
+Screen
+Profile Setup
+Triggered when onboarding_state === "REGISTERED". Collects the minimal identity information to create a usable profile.
+Form Fields
+Field
+Input Type
+Required
+Validation
+Backend Field
+Display Name
+text
+Yes
+2–50 chars, any unicode
+display_name
+Username
+text
+Yes
+3–30 chars, /^[a-z0-9_]+$/, unique
+username
+Bio
+textarea
+No
+Max 280 chars
+bio
+Avatar
+file upload
+No
+JPEG/PNG/WebP, max 2MB
+avatar_url
+Username Field Behaviour
+F01-ONB-004
+MUST
+Username input calls GET /users/check-username on blur (debounced 500ms) and shows "✓ Available" (green) or "✗ Taken" (red) inline. Suggest alternative if taken.
+F01-ONB-005
+MUST
+Username is lowercase-forced: any uppercase input is auto-converted to lowercase on change. Pattern enforced: /^[a-z0-9_]{3,30}$/.
+F01-ONB-006
+MUST
+CTA button "Continue" is disabled until display_name is filled and username shows "Available".
+Avatar Upload
+F01-ONB-007
+SHOULD
+Avatar upload uses a crop modal (react-image-crop or equivalent). User selects file → crop to 1:1 → upload cropped blob via POST /users/me/avatar → store returned URL.
+F01-ONB-008
+MUST
+If avatar upload fails, allow proceeding without one. Avatar is optional.
+Submit
+User clicks "Continue" → validate all fields → POST /onboarding/profile with { display_name, username, bio, avatar_url }
+On 200: update useAuthStore.user.onboarding_state = "PROFILE_COMPLETE" → navigate to /onboarding/skills
+On 409 (username conflict): show field error "Username already taken". Re-focus username field.
+4.4  Step 2 — Skills Setup
+Route
+/onboarding/skills
+Onboarding State
+PROFILE_COMPLETE
+Screen
+Skills Setup
+CRITICAL M-01 RULE: This step collects ONLY secondary_skills (max 5). Primary skill is NEVER shown or collected here. Primary skill is set exclusively by the M-02 AI verification backend job. There is NO primary skill input anywhere in F-01.
+SkillTagSelector Component
+F01-ONB-009
+MUST
+SkillTagSelector shows a searchable dropdown of known skills (fetched from a static JSON or lightweight API call). User can type to filter.
+F01-ONB-010
+MUST
+Maximum 5 skills selectable. When 5 are selected, disable the input and show "5/5 skills selected".
+F01-ONB-011
+MUST
+Each selected skill shows as a removable chip. Clicking × removes it and re-enables the input.
+F01-ONB-012
+MUST
+A helper text below reads: "Your primary skill will be identified automatically after you connect your GitHub." This sets correct expectations.
+F01-ONB-013
+SHOULD
+Pre-select up to 2 skills inferred from the GitHub handle if already connected (from OAuth). This is a UX convenience, not a requirement.
+Submit
+User selects at least 1 skill → "Continue" button enables
+Click "Continue" → PATCH /onboarding/skills with { "secondary_skills": [...] }
+On 200 → update useAuthStore → navigate to /onboarding/platforms
+4.5  Step 3 — Platform Connections & Goals
+Route
+/onboarding/platforms
+Onboarding State
+SKILLS_SET
+Screen
+Platform Connections + Goals
+This single screen handles both platform connections (POST /onboarding/connect-platform) and goals collection (PATCH /onboarding/goals). The backend advances state SKILLS_SET → GOALS_SET → ACTIVE on the goals PATCH.
+Platform Connection Section
+F01-ONB-014
+MUST
+GitHub is marked as REQUIRED. LeetCode, Kaggle, Stack Overflow, Codeforces are marked as OPTIONAL.
+F01-ONB-015
+MUST
+"Continue" CTA is disabled until GitHub is connected.
+F01-ONB-016
+MUST
+After a platform connects, show "Connected ✓" state on the card. Show the platform username pulled from OAuth response.
+F01-ONB-017
+MUST
+After GitHub connects, show LevelComputingBanner with text: "We're analysing your GitHub to set your skill level. This takes ~2 min."
+F01-ONB-018
+SHOULD
+PlatformConnectCard shows weight contribution: "GitHub contributes 35% to your level". This builds trust in the AI scoring system.
+PlatformConnectCard Component — Per Platform
+Platform
+Weight
+Required?
+OAuth Scope Needed
+GitHub
+35%
+Yes
+read:user, public_repo
+LeetCode
+25%
+No
+Username link (no OAuth — manual entry or scrape)
+Kaggle
+15%
+No
+read public profile
+Stack Overflow
+10%
+No
+Username link
+Codeforces
+10%
+No
+Username link
+Goals Section
+Below platform connections, show a goal multi-select. User picks 1–5 goals. This is collected on the same screen as platforms.
+Goal ID
+Display Label
+dsa_prep
+DSA & Placement Prep
+system_design
+System Design
+portfolio_build
+Build Projects for Portfolio
+open_source
+Open Source Contributions
+interview_ready
+Interview Readiness
+learn_new_stack
+Learn a New Tech Stack
+mentor_others
+Mentor Others
+Submit
+User connects GitHub → connects any optional platforms → selects goals → clicks "Finish Setup"
+Call PATCH /onboarding/goals with { "goals": [...] }
+On 200: onboarding_state = "ACTIVE", bridge_points award in response → celebrate with CountUp animation
+Navigate to /onboarding/welcome
+4.6  Step 4 — Welcome Screen
+Route
+/onboarding/welcome
+Onboarding State
+GOALS_SET → ACTIVE
+Screen
+Welcome Screen
+F01-ONB-019
+MUST
+Welcome screen shows immediately after goals PATCH succeeds (user is now ACTIVE). Do not gate on primary_skill being set.
+F01-ONB-020
+MUST
+Display Bridge Points award with CountUp animation: "You earned 50 Bridge Points for joining StackPair!"
+F01-ONB-021
+MUST
+Show LevelComputingBanner (persistent until M-02 completes): "Computing your skill level — check back in a few minutes."
+F01-ONB-022
+MUST
+CTA button: "Start Exploring" → navigates to /learn.
+F01-ONB-023
+SHOULD
+Begin polling GET /onboarding/status every 10s. When primary_skill becomes non-null, update LevelComputingBanner to show the discovered primary skill with a celebration animation.
+§5  Routing & Guard Logic
+All routing decisions in F-01 are driven by two factors: (1) whether the user is authenticated, and (2) the exact value of onboarding_state. No boolean flags. No assumptions.
+5.1  Route Protection Matrix
+Route
+Auth Required?
+Onboarding State
+Guard Action
+/login, /signup, /verify
+No
+Any
+If already ACTIVE → redirect /learn. Else render.
+/onboarding/profile
+Yes
+REGISTERED
+If state != REGISTERED → redirect to correct step.
+/onboarding/skills
+Yes
+PROFILE_COMPLETE
+If state < PROFILE_COMPLETE → redirect /onboarding/profile.
+/onboarding/platforms
+Yes
+SKILLS_SET
+If state < SKILLS_SET → redirect /onboarding/skills.
+/onboarding/welcome
+Yes
+GOALS_SET|ACTIVE
+If state < GOALS_SET → redirect correct step. If ACTIVE + visited again → redirect /learn.
+/learn, /build, /showcase
+Yes
+ACTIVE
+If not authed → /login. If authed + not ACTIVE → correct onboarding step.
+/admin/*
+Yes + admin
+ACTIVE
+If user_role != admin → redirect /learn.
+/card, /showcase (browse)
+No
+Any
+Public. Auth state read for conditional CTAs only.
+5.2  onboardingGuard Implementation
+State → route mapping (exact, no deviation):
+onboarding_state
+Redirect To
+REGISTERED
+/onboarding/profile
+PROFILE_COMPLETE
+/onboarding/skills
+SKILLS_SET
+/onboarding/platforms
+GOALS_SET
+/onboarding/welcome
+ACTIVE
+(allow product routes / /learn as default)
+F01-ROUTE-001
+MUST
+onboardingGuard must call GET /auth/me on every route check, not rely on cached Zustand state alone — cached state may be stale on hard refresh.
+F01-ROUTE-002
+MUST
+Route guards run in Next.js middleware (middleware.ts) for server-side redirect. Do not rely only on client-side checks.
+F01-ROUTE-003
+MUST
+If GET /auth/me returns 401, clear session and redirect /login regardless of route.
+5.3  M-01 Fix2 — Session Table Writes
+M-01 Fix2 states that the sessions DB table must be written on three events. F-01 is responsible for the frontend-side trigger of all three.
+Event
+Frontend Trigger
+Backend Effect
+Implementation
+Login
+POST /auth/email/verify or OAuth callback
+Creates new row in sessions table
+Called automatically by auth flow
+Token Refresh
+POST /auth/refresh
+Updates last_seen_at on session row
+Wired to TanStack refetchOnWindowFocus in sessionRefresh.ts
+Logout
+POST /auth/logout
+Sets revoked_at on session row
+Called from logout button handler before clearing local state
+§6  Component Specifications
+Detailed specification for every component and file in F-01. Files are listed with their exact path relative to the project root (c:\StackPair\frontend\).
+6.1  Pages
+app/(auth)/login/page.tsx
+Purpose
+Email entry + OAuth buttons for returning users. Functionally shared with signup.
+Auth Guard
+If ACTIVE user lands here → redirect /learn immediately (client-side check).
+State
+Local: email (string), isLoading (bool), error (string|null)
+Key Calls
+POST /auth/email/otp on submit. Stores email in sessionStorage for /verify page.
+Layout
+Centred card, max-w-md. No app shell. Full-page gradient background.
+Transitions
+Framer Motion: slide-up enter, slide-down exit.
+app/(auth)/signup/page.tsx
+Purpose
+Email + display_name entry for new users. Also leads to OTP flow.
+Extra Field
+display_name (optional at this stage — can also be set in onboarding step 1).
+Username Check
+Optional early username check for UX. Not required — username confirmed in onboarding.
+Key Calls
+GET /users/check-username (debounced 500ms). POST /auth/email/otp on submit.
+app/(auth)/verify/page.tsx
+Purpose
+OTP entry. Auto-submits on 6th digit. Manages countdown and resend.
+State
+Local: otp[6] (string array), secondsLeft (number), isSubmitting, error
+Email Source
+Read from sessionStorage (set on /login or /signup). If missing → redirect /login.
+Key Calls
+POST /auth/email/verify. POST /auth/email/otp for resend.
+Post-Success
+Populate useAuthStore → call onboardingGuard → route to correct step.
+app/(onboarding)/profile/page.tsx
+Guard
+Requires REGISTERED state. If PROFILE_COMPLETE or beyond → redirect to correct step.
+Form
+display_name, username (with availability check), bio (optional), avatar upload (optional).
+Key Calls
+GET /users/check-username (debounced on blur). POST /users/me/avatar (on file select). PATCH /onboarding/profile (on CTA).
+Post-Success
+Update onboarding_state in useAuthStore → navigate /onboarding/skills.
+app/(onboarding)/skills/page.tsx
+Guard
+Requires PROFILE_COMPLETE state.
+Content
+SkillTagSelector for secondary_skills (max 5). Explicit note that primary skill is computed automatically.
+Key Calls
+PATCH /onboarding/skills on CTA.
+Post-Success
+Navigate /onboarding/platforms.
+app/(onboarding)/platforms/page.tsx
+Guard
+Requires SKILLS_SET state.
+Content
+PlatformConnectCard ×5 + GoalsSelector. GitHub is required; others optional.
+Key Calls
+POST /onboarding/connect-platform per platform. PATCH /onboarding/goals on CTA.
+Post-Success
+Bridge Points CountUp animation → navigate /onboarding/welcome.
+app/(onboarding)/welcome/page.tsx
+Guard
+Requires GOALS_SET or ACTIVE state. If ACTIVE and user revisits → redirect /learn after 2s.
+Content
+Welcome message, BP award CountUp, LevelComputingBanner, "Start Exploring" CTA.
+Polling
+GET /onboarding/status every 10s. On primary_skill non-null → update banner to "Level set: TypeScript — Level 2".
+Key Calls
+GET /onboarding/status (polling).
+6.2  Components
+components/auth/OAuthButton.tsx
+Props
+provider: "github" | "google"; label?: string; isLoading?: boolean
+Behaviour
+On click: window.location.href = API_URL + "/auth/" + provider. Shows spinner while loading.
+Icons
+GitHub Invertocat SVG, Google "G" SVG — inline SVG, no external icon library needed.
+components/auth/OTPCountdown.tsx
+Props
+seconds: number; onExpire: () => void; onResend: () => void
+Behaviour
+Counts down from `seconds` (default 60) to 0. ProgressBar (red fill) shows remaining. At 0: fires onExpire, shows Resend button.
+Resend
+POST /auth/email/otp. Resets timer to 60. Show loading state on resend button while calling API.
+components/ui/OTPInput.tsx
+Props
+length?: number (default 6); onComplete: (otp: string) => void; disabled?: boolean
+Internal State
+values: string[] — one per cell.
+Refs
+inputRefs: RefObject<HTMLInputElement>[] — one per cell for programmatic focus.
+Paste Handler
+onPaste: strips non-digits, fills cells left-to-right, triggers onComplete if 6 chars.
+Keyboard
+onKeyDown: Backspace on empty → focus prev. Any digit → fill + focus next. Non-digit → ignore.
+components/onboarding/StepIndicator.tsx
+Props
+currentState: OnboardingState
+Steps
+["profile", "skills", "platforms", "welcome"] — 4 steps only.
+Visual
+Horizontal bar with step circles. Completed=green tick, current=brand blue filled, future=grey outline.
+State Mapping
+REGISTERED → step 0 active. PROFILE_COMPLETE → step 1 active. SKILLS_SET → step 2 active. GOALS_SET|ACTIVE → step 3 active.
+components/onboarding/SkillTagSelector.tsx
+Props
+value: string[]; onChange: (skills: string[]) => void; maxItems?: number (default 5)
+Data Source
+Static JSON: /public/data/skills.json — list of ~200 common tech skills. No API call needed.
+Search
+Filters skills list on input. Exact match + prefix match + fuzzy (Fuse.js or simple filter).
+Max Enforcement
+When length === maxItems: disable input, show "5/5". Show counter chip "3/5" at all times.
+IMPORTANT
+Never render a "Primary Skill" section or header here. This selector is secondary_skills only.
+components/onboarding/PlatformConnectCard.tsx
+Props
+platform: Platform; isConnected: boolean; platformUsername?: string; onConnect: () => void
+Connected State
+Show green checkmark, platform username, "Connected" badge. Hide connect button.
+Pending State
+Show platform icon, name, weight contribution, "Connect" button.
+GitHub Card
+Required: "Connect GitHub (Required)". Show warning icon if not connected when user tries to continue.
+components/onboarding/LevelComputingBanner.tsx
+When Shown
+Whenever user.primary_skill === null AND user.onboarding_state === "ACTIVE".
+Design
+Amber/info banner with pulsing animation. Icon: CPU or brain emoji. Text: "Analysing your GitHub — skill level coming soon."
+Dismissal
+Auto-dismisses when polling detects primary_skill is set. Replaces with: "Your primary skill: TypeScript — Level 2 🎉".
+Scope
+Shown on /onboarding/welcome AND in the app Header (F-11). This component is shared.
+lib/auth/useAuth.ts
+Returns
+{ user, session, requestOTP, verifyOTP, loginGitHub, loginGoogle, logout, isLoading, error }
+requestOTP(email)
+POST /auth/email/otp. Sets otpSent=true in useAuthStore on success.
+verifyOTP(email, otp)
+POST /auth/email/verify. On success: populate useAuthStore, return user for routing.
+loginGitHub()
+window.location.href = API_URL + "/auth/github"
+loginGoogle()
+window.location.href = API_URL + "/auth/google"
+logout()
+POST /auth/logout → clear useAuthStore → supabase.auth.signOut() → router.push("/login")
+lib/auth/authGuard.tsx
+Type
+Next.js middleware.ts + client-side HOC
+Logic
+Check supabase.auth.getSession(). If null → redirect /login. If session valid → call GET /auth/me → check onboarding_state → route.
+Middleware scope
+Applies to: /learn, /build, /showcase, /session, /profile, /settings, /notifications, /admin. NOT to: /login, /signup, /verify, /card, /showcase (browse).
+lib/auth/onboardingGuard.tsx
+Logic
+Read user.onboarding_state. Map to route (see §5.2). Redirect if current route does not match expected state.
+Called By
+Every /onboarding/* page on mount. Also called by authGuard when state is non-ACTIVE.
+Server vs Client
+Server-side check in middleware.ts (using session cookie). Client-side check on mount as fallback.
+lib/auth/sessionRefresh.ts
+Purpose
+Wire POST /auth/refresh to TanStack Query window focus event.
+Implementation
+In QueryClient config: set refetchOnWindowFocus: true. Add global query observer that calls POST /auth/refresh on window focus. Update useAuthStore.session on response.
+M-01 Fix2
+This call updates sessions.last_seen_at in the backend DB. Critical for inactivity tracking.
+§7  State Management
+F-01 owns useAuthStore — the most critical store in the application. All other modules read from it.
+7.1  useAuthStore — Full Schema
+Store File
+lib/stores/useAuthStore.ts
+Created By
+F-01. Consumed read-only by F-03, F-04, F-08, F-11.
+Persistence
+Supabase session managed by Supabase SDK. Zustand store is in-memory only, rehydrated from Supabase on app load.
+Field
+Type
+Source
+Description
+user.id
+string | null
+GET /auth/me
+Supabase auth user UUID
+user.email
+string | null
+GET /auth/me
+User email address
+user.username
+string | null
+GET /auth/me
+Unique username (slug)
+user.display_name
+string | null
+GET /auth/me
+Display name
+user.onboarding_state
+OnboardingState | null
+GET /auth/me
+REGISTERED|PROFILE_COMPLETE|SKILLS_SET|GOALS_SET|ACTIVE
+user.primary_skill
+string | null
+GET /auth/me / polling
+Set ONLY by M-02. Null until M-02 runs. READ-ONLY.
+user.secondary_skills
+string[]
+GET /auth/me
+User-chosen skills (max 5)
+user.bridge_points
+number
+GET /auth/me
+Bridge Points balance
+user.user_role
+"user" | "admin"
+GET /auth/me
+Used by F-11 for admin route guard
+session
+Session | null
+Supabase SDK
+Contains access_token + refresh_token
+isLoading
+boolean
+Local
+OTP request / verification in-flight
+otpSent
+boolean
+Local
+Controls which auth screen to show
+error
+string | null
+Local
+Last auth error message
+7.2  Actions
+setUser(user: User) — called after successful login/verify/refresh
+setSession(session: Session) — called after JWT refresh
+setOtpSent(sent: boolean) — called after POST /auth/email/otp succeeds
+setError(error: string | null) — called on API error
+setLoading(loading: boolean) — called before/after API calls
+clearStore() — called on logout: sets all fields to null/false/0
+7.3  Type Definitions
+Define in lib/types/auth.ts:
+Type
+Values
+OnboardingState
+"REGISTERED" | "PROFILE_COMPLETE" | "SKILLS_SET" | "GOALS_SET" | "ACTIVE"
+UserRole
+"user" | "admin"
+Platform
+"github" | "leetcode" | "kaggle" | "stackoverflow" | "codeforces"
+AvailabilityStatus
+"available" | "busy" | "scheduled"
+LevelState
+"pending" | "active" | "stale"  — derived, not stored
+§8  Error Handling
+8.1  API Error Map
+Status
+Endpoint
+Frontend Action
+429
+POST /auth/email/otp
+Show countdown: "Request new code in [X]s". Disable submit.
+400
+POST /auth/email/verify
+Clear OTP cells, refocus cell 1, show "Incorrect code. Try again."
+410
+POST /auth/email/verify
+Clear OTP cells, show "Code expired. Request a new one." Enable resend.
+409
+PATCH /onboarding/profile
+Field error on username: "This username is taken." Suggest alternative.
+400
+PATCH /onboarding/skills
+Show generic error toast: "Something went wrong. Please try again."
+409
+POST /onboarding/connect-platform
+Show: "This platform is already connected to your account."
+401
+Any
+Clear useAuthStore, call supabase.auth.signOut(), redirect /login.
+422
+Any
+Show field-level validation errors from response body next to relevant fields.
+500
+Any
+Show generic error toast: "Server error. Please try again in a moment." Retry button.
+Network
+Any
+Show: "No internet connection. Check your network and try again." Retry button.
+8.2  Form Validation Error Display Rules
+F01-ERR-001
+MUST
+Field-level errors appear directly below the relevant input, in red (C.red), font-size 12px, with a red border on the input field.
+F01-ERR-002
+MUST
+Errors shown on submit always. Errors shown on blur for email and username (realtime validation). Errors for OTP shown immediately on wrong entry.
+F01-ERR-003
+MUST
+Submit button shows loading spinner (not disabled) while API call is in flight. Re-enable and clear spinner on error.
+F01-ERR-004
+SHOULD
+If POST /auth/email/verify fails with 400 three times in a row on the same OTP session, show: "Too many attempts. Please request a new code." and reset to email entry.
+§9  UI / UX Requirements
+9.1  Layout & Responsiveness
+F01-UX-001
+MUST
+All auth pages (/login, /signup, /verify) render as a centred card (max-w-md) on desktop, full-width on mobile. No app shell (no nav, no sidebar) on any auth or onboarding page.
+F01-UX-002
+MUST
+All onboarding pages (/onboarding/*) render with only the StepIndicator as chrome. No bottom nav, no sidebar. Content max-w-lg centred.
+F01-UX-003
+MUST
+All pages are responsive — tested at 375px (iPhone SE), 768px (tablet), 1280px (desktop). No horizontal scroll at any breakpoint.
+9.2  Animation & Motion
+F01-UX-004
+MUST
+Page transitions between all /onboarding/* steps use a slide-left (forward) / slide-right (backward) animation via Framer Motion AnimatePresence. Duration: 300ms, ease-out.
+F01-UX-005
+MUST
+OTP cells individually animate with a small scale-up (1.0→1.1→1.0) on successful digit entry. Duration: 150ms.
+F01-UX-006
+MUST
+Bridge Points CountUp on /onboarding/welcome: counts from 0 to awarded amount over 1200ms with ease-out.
+F01-UX-007
+SHOULD
+PlatformConnectCard transitions from "Connect" state to "Connected ✓" state with a green fill animation over 400ms on successful OAuth.
+9.3  Loading States
+F01-UX-008
+MUST
+Every button that triggers an API call shows a spinner (Tailwind animate-spin or Framer Motion) in place of text while the call is in-flight. Button is NOT disabled — only visually loading.
+F01-UX-009
+MUST
+OTP auto-submit shows a full-cell loading state on each OTP cell while POST /auth/email/verify is in-flight.
+F01-UX-010
+MUST
+OAuth redirect (window.location.href) shows a full-screen loading overlay: "Connecting to GitHub…" while the redirect is happening.
+9.4  PWA Considerations
+F01-UX-011
+MUST
+Auth pages work in PWA standalone mode. The Supabase OAuth callback must handle the standalone window context correctly — use a custom URL scheme handler or popup flow for OAuth if needed.
+F01-UX-012
+SHOULD
+If the user dismisses the PWA install banner during onboarding, remember the dismissal (localStorage) and do not show again for 7 days.
+§10  Accessibility
+F01-ACC-001
+MUST
+All form inputs have associated <label> elements (via htmlFor). OTPInput uses aria-label="OTP digit [n] of 6" on each cell.
+F01-ACC-002
+MUST
+Error messages are linked to their input via aria-describedby. Invalid inputs have aria-invalid="true".
+F01-ACC-003
+MUST
+OTPInput is fully keyboard accessible: Tab to enter the group, arrow keys or Tab/Shift-Tab to move between cells.
+F01-ACC-004
+MUST
+All interactive elements (buttons, links, inputs) have a visible focus ring (outline: 2px solid brand blue).
+F01-ACC-005
+MUST
+SkillTagSelector is accessible: selected skills are listbox items, removable chips have aria-label="Remove [skill name]".
+F01-ACC-006
+SHOULD
+All animations respect prefers-reduced-motion. Wrap all Framer Motion transitions with a check: if reducedMotion → set duration to 0.
+F01-ACC-007
+SHOULD
+Colour contrast ratios meet WCAG AA: ≥ 4.5:1 for body text, ≥ 3:1 for large text and UI components.
+§11  Performance Requirements
+Metric
+Target
+Method
+Time to Interactive — /login
+< 1.5s on 4G
+Next.js static page, no SSR data fetch needed
+OTP delivery confirmation
+< 10s
+Backend dependent — frontend shows timer from click, not from OTP arrival
+OTP auto-submit to redirect
+< 800ms
+POST /auth/email/verify P95 < 500ms + 300ms transition
+Onboarding step navigation
+< 300ms perceived
+Instant local navigation + animation. API call starts optimistically.
+SkillTagSelector filter
+< 50ms
+Pure client-side filter on static JSON, no debounce needed
+Avatar upload
+< 3s on 4G for 2MB
+Show progress bar. POST /users/me/avatar with upload progress events.
+First Contentful Paint — /login
+< 1.0s
+Minimal JS bundle. Lazy-load Framer Motion on this route.
+Bundle Size Targets
+F-01 total JS bundle (auth + onboarding pages) < 150KB gzipped
+OTPInput component < 5KB. Supabase Auth SDK lazy-loaded on auth routes only.
+Framer Motion: loaded with next/dynamic on onboarding pages. Not in root bundle.
+skills.json (static skill list): < 20KB. Loaded once, cached in memory for session.
+§12  Testing Requirements
+12.1  Unit Tests — Components
+Component
+Tests Required
+OTPInput
+Digit entry advances focus | Backspace retreats | Paste fills all | Auto-submit on 6th | Disabled state | Non-digit ignored
+OTPCountdown
+Counts down to 0 | Fires onExpire at 0 | Resend button appears at 0 | Reset on resend
+SkillTagSelector
+Add skill | Remove skill | Max 5 enforced | Search filters correctly | No primary skill field rendered
+StepIndicator
+Correct step active for each OnboardingState | 4 steps only | Completed steps show tick
+LevelComputingBanner
+Shown when primary_skill=null | Auto-dismissed when primary_skill set | Correct text
+PlatformConnectCard
+Unconnected state | Connected state | Required badge on GitHub | Weight % shown
+onboardingGuard
+REGISTERED → /onboarding/profile | PROFILE_COMPLETE → /onboarding/skills | ACTIVE → allow through
+12.2  Integration Tests — API Flows
+Flow
+Tests Required
+Email OTP Signup
+Request OTP → enter 6 digits → verify → useAuthStore populated → routed to onboarding/profile
+Email OTP Login
+Same as signup. Returns ACTIVE user → routed to /learn.
+OTP Rate Limit
+429 response → countdown shown → submit disabled → resend enabled after countdown
+OTP Expiry
+60s elapsed → cells disabled → error shown → resend available
+Onboarding Step 1
+Fill form → submit → PATCH /onboarding/profile → state=PROFILE_COMPLETE → navigate skills
+Onboarding Step 2
+Select skills (max 5) → submit → PATCH /onboarding/skills → state=SKILLS_SET → navigate platforms
+Onboarding Step 3
+Connect GitHub → connect optional → select goals → PATCH /onboarding/goals → state=ACTIVE → navigate welcome
+Session Refresh
+Window focus → POST /auth/refresh → useAuthStore.session updated
+Logout
+Click logout → POST /auth/logout → stores cleared → redirect /login
+401 Handling
+Any API returns 401 → stores cleared → redirect /login
+12.3  E2E Tests (Playwright)
+Complete happy path: email signup → OTP → profile setup → skills → platforms → goals → welcome → /learn
+GitHub OAuth: click → redirect → callback → correct route based on onboarding_state
+Returning ACTIVE user: login → /learn (no onboarding)
+Mid-onboarding refresh: at /onboarding/skills, hard refresh → should stay on /onboarding/skills, not /login
+primary_skill null: ACTIVE user with null primary_skill → /learn shows LevelPendingScreen
+§13  Acceptance Criteria
+F-01 is considered complete when ALL of the following pass:
+13.1  Auth
+F01-AC-001
+MUST
+User can sign up with a new email, receive OTP within 15s, enter it in OTPInput, and land on /onboarding/profile.
+F01-AC-002
+MUST
+GitHub OAuth click → redirect → return → correct route (new user → onboarding/profile, returning → /learn).
+F01-AC-003
+MUST
+Google OAuth click → redirect → return → correct route.
+F01-AC-004
+MUST
+OTP auto-submits on 6th digit without any manual button press.
+F01-AC-005
+MUST
+Wrong OTP → cells clear, error message shown, refocus first cell.
+F01-AC-006
+MUST
+OTP expires after 60s → cells disabled → resend button appears.
+F01-AC-007
+MUST
+Window focus fires POST /auth/refresh and updates sessions.last_seen_at in DB (verify via backend log).
+F01-AC-008
+MUST
+Logout → POST /auth/logout → DB session row has revoked_at set (verify via backend).
+13.2  Onboarding
+F01-AC-009
+MUST
+onboarding_state advances correctly on each step — verify by calling GET /auth/me after each PATCH.
+F01-AC-010
+MUST
+Primary skill input does NOT exist anywhere in the onboarding flow. Code review must confirm no primary_skill field.
+F01-AC-011
+MUST
+Onboarding step 2 sends only secondary_skills array in PATCH /onboarding/skills payload. Verify in network tab.
+F01-AC-012
+MUST
+After PATCH /onboarding/goals returns 200, Bridge Points CountUp animation plays on /onboarding/welcome.
+F01-AC-013
+MUST
+LevelComputingBanner visible on /onboarding/welcome. Disappears when GET /onboarding/status returns non-null primary_skill.
+F01-AC-014
+MUST
+Hard-refreshing any /onboarding/* page keeps the user on the correct step — no regression to /login.
+13.3  Guards
+F01-AC-015
+MUST
+ACTIVE user visiting /login → immediate redirect to /learn. No flash of login page.
+F01-AC-016
+MUST
+REGISTERED user visiting /learn → immediate redirect to /onboarding/profile.
+F01-AC-017
+MUST
+Unauthenticated user visiting /learn → immediate redirect to /login.
+F01-AC-018
+MUST
+Non-admin user visiting /admin/* → immediate redirect to /learn.
+13.4  Error Handling
+F01-AC-019
+MUST
+429 on POST /auth/email/otp → countdown timer shown → submit disabled for duration.
+F01-AC-020
+MUST
+401 from any API during active session → clear stores → redirect /login.
+F01-AC-021
+MUST
+409 on username check → field error shown, alternative suggested, submit blocked.
+§14  File Structure
+All paths relative to the Next.js project root. Files marked ★ are new — not shared with other modules.
+File Path
+Type
+Notes
+app/(auth)/login/page.tsx
+Page
+Email entry + OAuth buttons
+app/(auth)/signup/page.tsx
+Page
+New user email + display_name entry
+app/(auth)/verify/page.tsx
+Page ★
+OTP entry with auto-submit
+app/(onboarding)/layout.tsx
+Layout
+Shared layout: StepIndicator, no app shell
+app/(onboarding)/profile/page.tsx
+Page
+Step 1 — REGISTERED state
+app/(onboarding)/skills/page.tsx
+Page
+Step 2 — PROFILE_COMPLETE state
+app/(onboarding)/platforms/page.tsx
+Page
+Step 3 — SKILLS_SET state
+app/(onboarding)/welcome/page.tsx
+Page
+Step 4 — GOALS_SET→ACTIVE state
+components/auth/OAuthButton.tsx
+Component
+GitHub + Google OAuth buttons
+components/auth/OTPCountdown.tsx
+Component ★
+60s countdown + resend trigger
+components/ui/OTPInput.tsx
+Component ★
+6-cell OTP input with auto-focus logic
+components/onboarding/StepIndicator.tsx
+Component
+4-step progress bar mapped to enum
+components/onboarding/SkillTagSelector.tsx
+Component
+Secondary skills tag picker (max 5)
+components/onboarding/PlatformConnectCard.tsx
+Component
+Platform OAuth card with weight %
+components/onboarding/LevelComputingBanner.tsx
+Component ★
+Persistent banner until M-02 completes
+lib/auth/useAuth.ts
+Hook
+requestOTP, verifyOTP, loginGitHub/Google, logout
+lib/auth/authGuard.tsx
+HOC
+Authentication + onboarding_state routing
+lib/auth/onboardingGuard.tsx
+HOC
+State-to-route enum mapping
+lib/auth/sessionRefresh.ts
+Util ★
+TanStack window-focus → POST /auth/refresh
+lib/stores/useAuthStore.ts
+Store
+Zustand store: user, session, loading, error
+lib/types/auth.ts
+Types
+OnboardingState, UserRole, Platform, etc.
+public/data/skills.json
+Static
+Skill list for SkillTagSelector (~200 items)
+middleware.ts
+Middleware
+Next.js edge middleware for route guards
+StackPair — Frontend F-01 PRD v1.0.0  ·  Synced with Backend M-01  ·  March 2026
