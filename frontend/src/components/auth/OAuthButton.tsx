@@ -1,20 +1,34 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
 
 interface OAuthButtonProps {
   provider: 'github' | 'google';
   label?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-
 export default function OAuthButton({ provider, label }: OAuthButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loginWithGithub = useAuthStore((s) => s.loginWithGithub);
+  const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
 
-  const handleClick = () => {
+  const handleClick = async () => {
     setIsLoading(true);
-    window.location.href = `${API_URL}/auth/${provider}`;
+    setError(null);
+    try {
+      if (provider === 'github') {
+        await loginWithGithub();
+      } else {
+        await loginWithGoogle();
+      }
+      // The store will redirect to the OAuth URL
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : `${provider} login failed`;
+      setError(message);
+      setIsLoading(false);
+    }
   };
 
   const icons = {
@@ -44,20 +58,25 @@ export default function OAuthButton({ provider, label }: OAuthButtonProps) {
   };
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={isLoading}
-      className={`w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-full font-medium text-[15px] transition-all duration-200 ${styles[provider]} ${isLoading ? 'opacity-70 cursor-wait' : 'cursor-pointer'}`}
-    >
-      {isLoading ? (
-        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-        </svg>
-      ) : (
-        icons[provider]
+    <div>
+      <button
+        onClick={handleClick}
+        disabled={isLoading}
+        className={`w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-full font-medium text-[15px] transition-all duration-200 ${styles[provider]} ${isLoading ? 'opacity-70 cursor-wait' : 'cursor-pointer'}`}
+      >
+        {isLoading ? (
+          <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+          </svg>
+        ) : (
+          icons[provider]
+        )}
+        <span>{label || defaultLabels[provider]}</span>
+      </button>
+      {error && (
+        <p className="mt-1.5 text-sm text-[#DC2626] text-center">{error}</p>
       )}
-      <span>{label || defaultLabels[provider]}</span>
-    </button>
+    </div>
   );
 }

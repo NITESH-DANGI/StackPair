@@ -6,12 +6,14 @@ import OAuthButton from '@/components/auth/OAuthButton';
 import Logo from '@/components/ui/Logo';
 import { ShieldCheckIcon, UsersIcon, ZapIcon } from '@/components/ui/Icons';
 import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const register = useAuthStore((s) => s.register);
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
@@ -31,16 +33,20 @@ export default function SignupPage() {
     }
 
     setIsLoading(true);
-    
+
     try {
-      sessionStorage.setItem('stackpair_email', email);
+      // Store display name for use after OTP verification in onboarding
       if (displayName) sessionStorage.setItem('stackpair_display_name', displayName);
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
+
+      await register(email);
       window.location.href = `/verify?email=${encodeURIComponent(email)}`;
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      if (message === 'OTP_RATE_LIMITED') {
+        setError('Too many attempts. Please wait a few minutes and try again.');
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -151,8 +157,8 @@ export default function SignupPage() {
                     onBlur={() => email && !validateEmail(email) && setError('Enter a valid email address')}
                     placeholder="you@example.com"
                     className={`w-full pl-12 pr-4 py-3.5 rounded-xl border text-[15px] transition-all duration-200 outline-none
-                      ${error 
-                        ? 'border-[#DC2626] bg-[#FEF2F2]' 
+                      ${error
+                        ? 'border-[#DC2626] bg-[#FEF2F2]'
                         : 'border-[#E5E5E3] bg-white hover:border-[#D4D4D0] focus:border-[#7A8EC0]'
                       }`}
                     aria-invalid={!!error}

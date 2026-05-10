@@ -6,11 +6,13 @@ import OAuthButton from '@/components/auth/OAuthButton';
 import Logo from '@/components/ui/Logo';
 import { ShieldCheckIcon, UsersIcon, ZapIcon } from '@/components/ui/Icons';
 import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const register = useAuthStore((s) => s.register);
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
@@ -32,16 +34,16 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // In production: POST /auth/email/otp
-      // For now, simulate and navigate
-      sessionStorage.setItem('stackpair_email', email);
-
-      // Simulating API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-
+      // Backend uses the same OTP flow for login and signup
+      await register(email);
       window.location.href = `/verify?email=${encodeURIComponent(email)}`;
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      if (message === 'OTP_RATE_LIMITED') {
+        setError('Too many attempts. Please wait a few minutes and try again.');
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -56,19 +58,16 @@ export default function LoginPage() {
         transition={{ duration: 0.6, ease: 'easeOut' }}
         className="hidden lg:flex lg:w-1/2 flex-col justify-center px-16 xl:px-24"
       >
-        {/* Logo */}
         <div className="mb-16">
           <Logo size="lg" />
         </div>
 
-        {/* Headline */}
         <h1 className="font-display text-5xl xl:text-6xl font-semibold text-[#1A1A1A] leading-tight mb-6">
           Find your perfect<br />
           learning peer in<br />
           <span className="text-[#7A8EC0]">minutes</span>
         </h1>
 
-        {/* Trust badges */}
         <div className="flex items-center gap-6 mt-8">
           <div className="flex items-center gap-2 text-sm text-[#4B5563]">
             <span className="w-6 h-6 rounded-full bg-[#D1FAE5] flex items-center justify-center">

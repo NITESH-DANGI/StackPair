@@ -9,7 +9,7 @@ interface StepIndicatorProps {
 const STEPS = [
   { key: 'profile', label: 'Profile' },
   { key: 'skills', label: 'Skills' },
-  { key: 'platforms', label: 'Platforms' },
+  { key: 'goals', label: 'Goals' },
   { key: 'welcome', label: 'Welcome' },
 ];
 
@@ -38,7 +38,6 @@ export default function StepIndicator({ currentState }: StepIndicatorProps) {
         {STEPS.map((step, index) => {
           const isCompleted = index < activeStep;
           const isActive = index === activeStep;
-          const isFuture = index > activeStep;
 
           return (
             <div key={step.key} className="flex flex-col items-center relative z-10">

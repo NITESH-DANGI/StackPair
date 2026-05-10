@@ -27,7 +27,7 @@ export default function OTPInput({ length = 6, onComplete, disabled = false, err
   const handleChange = useCallback((index: number, value: string) => {
     if (disabled) return;
     
-    const digit = value.replace(/[^0-9]/g, '').slice(-1);
+    const digit = value.replace(/[^0-9a-zA-Z]/g, '').slice(-1);
     
     const newValues = [...values];
     newValues[index] = digit;
@@ -76,7 +76,7 @@ export default function OTPInput({ length = 6, onComplete, disabled = false, err
     if (disabled) return;
     e.preventDefault();
 
-    const pastedData = e.clipboardData.getData('text').replace(/[^0-9]/g, '').slice(0, length);
+    const pastedData = e.clipboardData.getData('text').replace(/[^0-9a-zA-Z]/g, '').slice(0, length);
     
     if (pastedData.length > 0) {
       const newValues = [...values];
@@ -115,8 +115,8 @@ export default function OTPInput({ length = 6, onComplete, disabled = false, err
           key={index}
           ref={(el) => { inputRefs.current[index] = el; }}
           type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
+          inputMode="text"
+          pattern="[0-9a-zA-Z]*"
           maxLength={1}
           value={value}
           onChange={(e) => handleChange(index, e.target.value)}
@@ -125,7 +125,7 @@ export default function OTPInput({ length = 6, onComplete, disabled = false, err
           disabled={disabled}
           aria-label={`OTP digit ${index + 1} of ${length}`}
           className={`
-            w-14 h-14 text-center text-2xl font-semibold rounded-xl
+            w-12 h-14 text-center text-xl font-semibold rounded-xl
             border-2 transition-all duration-200 outline-none
             ${disabled 
               ? 'bg-[#F3F4F6] border-[#E5E5E3] text-[#9CA3AF] cursor-not-allowed' 

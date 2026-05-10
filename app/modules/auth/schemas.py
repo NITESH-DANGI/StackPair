@@ -26,7 +26,7 @@ class RegisterResponse(BaseModel):
 
 class VerifyOTPRequest(BaseModel):
     email: EmailStr
-    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    otp: str = Field(..., min_length=6, max_length=12, pattern=r"^[a-zA-Z0-9]+$")
 
 
 class UserBrief(BaseModel):

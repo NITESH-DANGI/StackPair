@@ -3,6 +3,8 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import StepIndicator from '@/components/onboarding/StepIndicator';
+import { api, ApiError } from '@/lib/api';
+import type { OnboardingStateResponse } from '@/lib/types/auth';
 
 export default function ProfilePage() {
   const [displayName, setDisplayName] = useState('');
@@ -22,32 +24,22 @@ export default function ProfilePage() {
 
     setUsernameStatus('checking');
     setErrors(prev => { const next = { ...prev }; delete next.username; return next; });
-    
-    try {
-      // In production: GET /users/check-username?username=value
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Simulate availability (taken if "admin" or "test")
-      const taken = ['admin', 'test', 'user'].includes(value);
-      setUsernameStatus(taken ? 'taken' : 'available');
-      if (taken) {
-        setErrors(prev => ({ ...prev, username: `Username "${value}" is taken. Try "${value}_dev"` }));
-      }
-    } catch {
-      setUsernameStatus('idle');
-    }
+
+    // We don't have a dedicated username check endpoint, so we'll validate on submit
+    // For now, mark as available if pattern is valid
+    setUsernameStatus('available');
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const newErrors: Record<string, string> = {};
     if (!displayName || displayName.length < 2) newErrors.displayName = 'Display name must be at least 2 characters';
-    if (displayName.length > 50) newErrors.displayName = 'Display name is too long (max 50)';
+    if (displayName.length > 60) newErrors.displayName = 'Display name is too long (max 60)';
     if (!username || username.length < 3) newErrors.username = 'Username must be at least 3 characters';
-    if (usernameStatus === 'taken') newErrors.username = 'This username is taken';
-    if (bio.length > 280) newErrors.bio = 'Bio is too long';
-    
+    if (username.length > 30) newErrors.username = 'Username is too long (max 30)';
+    if (!/^[a-z0-9_]+$/.test(username)) newErrors.username = 'Only lowercase letters, numbers, and underscores';
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -55,22 +47,39 @@ export default function ProfilePage() {
 
     setIsLoading(true);
     try {
-      // In production: PATCH /onboarding/profile
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await api<OnboardingStateResponse>('/onboarding/profile', {
+        method: 'POST',
+        body: {
+          username,
+          display_name: displayName,
+          avatar_url: null,
+        },
+      });
       window.location.href = '/onboarding/skills';
-    } catch {
-      setErrors({ submit: 'Something went wrong. Please try again.' });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.detail === 'USERNAME_TAKEN') {
+          setErrors({ username: `Username "${username}" is taken. Try another one.` });
+          setUsernameStatus('taken');
+        } else if (err.detail === 'INVALID_ONBOARDING_STATE') {
+          setErrors({ submit: 'This step has already been completed.' });
+        } else {
+          setErrors({ submit: err.detail });
+        }
+      } else {
+        setErrors({ submit: 'Something went wrong. Please try again.' });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const isFormValid = displayName.length >= 2 && username.length >= 3 && usernameStatus === 'available';
+  const isFormValid = displayName.length >= 2 && username.length >= 3 && /^[a-z0-9_]+$/.test(username);
 
   return (
     <>
       <StepIndicator currentState="REGISTERED" />
-      
+
       <motion.div
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
@@ -110,7 +119,7 @@ export default function ProfilePage() {
               value={displayName}
               onChange={(e) => { setDisplayName(e.target.value); setErrors(prev => { const next = { ...prev }; delete next.displayName; return next; }); }}
               placeholder="Your name"
-              maxLength={50}
+              maxLength={60}
               className={`w-full px-4 py-3.5 rounded-xl border text-[15px] transition-all duration-200 outline-none
                 ${errors.displayName ? 'border-[#DC2626] bg-[#FEF2F2]' : 'border-[#E5E5E3] bg-white hover:border-[#D4D4D0] focus:border-[#7A8EC0]'}`}
               aria-invalid={!!errors.displayName}
@@ -165,7 +174,7 @@ export default function ProfilePage() {
             {usernameStatus === 'available' && !errors.username && (
               <p className="mt-1.5 text-sm text-[#059669] flex items-center gap-1">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Username available
+                Username looks good
               </p>
             )}
             {errors.username && <p className="mt-1.5 text-sm text-[#DC2626]">{errors.username}</p>}

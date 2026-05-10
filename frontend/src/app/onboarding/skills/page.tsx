@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import StepIndicator from '@/components/onboarding/StepIndicator';
 import SkillTagSelector from '@/components/onboarding/SkillTagSelector';
+import { api, ApiError } from '@/lib/api';
+import type { OnboardingStateResponse } from '@/lib/types/auth';
 
 export default function SkillsPage() {
   const [skills, setSkills] = useState<string[]>([]);
@@ -12,7 +14,7 @@ export default function SkillsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (skills.length === 0) {
       setError('Please select at least 1 skill');
       return;
@@ -20,11 +22,23 @@ export default function SkillsPage() {
 
     setIsLoading(true);
     try {
-      // In production: PATCH /onboarding/skills
-      await new Promise(resolve => setTimeout(resolve, 800));
-      window.location.href = '/onboarding/platforms';
-    } catch {
-      setError('Something went wrong. Please try again.');
+      await api<OnboardingStateResponse>('/onboarding/skills', {
+        method: 'POST',
+        body: {
+          secondary_skills: skills,
+        },
+      });
+      window.location.href = '/onboarding/goals';
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.detail === 'INVALID_ONBOARDING_STATE') {
+          setError('This step has already been completed.');
+        } else {
+          setError(err.detail);
+        }
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

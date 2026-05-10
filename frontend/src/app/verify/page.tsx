@@ -7,15 +7,38 @@ import OTPInput from '@/components/ui/OTPInput';
 import OTPCountdown from '@/components/auth/OTPCountdown';
 import Logo from '@/components/ui/Logo';
 import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
+import type { OnboardingState } from '@/lib/types/auth';
+
+/** Map onboarding state to the correct frontend route */
+function getOnboardingRoute(state: OnboardingState): string {
+  switch (state) {
+    case 'REGISTERED':
+      return '/onboarding/profile';
+    case 'PROFILE_COMPLETE':
+      return '/onboarding/skills';
+    case 'SKILLS_SET':
+      return '/onboarding/goals';
+    case 'GOALS_SET':
+      return '/onboarding/welcome';
+    case 'ACTIVE':
+      return '/dashboard';
+    default:
+      return '/onboarding/profile';
+  }
+}
 
 function VerifyContent() {
   const searchParams = useSearchParams();
   const email = searchParams.get('email') || '';
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isExpired, setIsExpired] = useState(false);
   const [isResending, setIsResending] = useState(false);
+
+  const verifyOtp = useAuthStore((s) => s.verifyOtp);
+  const register = useAuthStore((s) => s.register);
 
   const maskedEmail = email
     ? email.replace(/^(.{1,2})(.*)(@.*)$/, (_, first, middle, domain) =>
@@ -26,19 +49,34 @@ function VerifyContent() {
   const handleOTPComplete = useCallback(async (otp: string) => {
     setIsSubmitting(true);
     setError(null);
-    
+
     try {
-      // In production: POST /auth/email/verify
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      // Simulate success — navigate to onboarding
-      window.location.href = '/onboarding/profile';
-    } catch {
-      setError('Incorrect code. Try again.');
+      const result = await verifyOtp(email, otp);
+      // Redirect based on onboarding state
+      const route = getOnboardingRoute(result.user.onboarding_state);
+      window.location.href = route;
+    } catch (err: unknown) {
+      let message = 'Verification failed';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'object' && err !== null && 'detail' in err) {
+        const detail = (err as { detail: unknown }).detail;
+        message = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      }
+      if (message === 'OTP_INCORRECT' || message.includes('Invalid')) {
+        setError('Incorrect code. Please check and try again.');
+      } else if (message === 'OTP_EXPIRED') {
+        setError('Code has expired. Please request a new one.');
+        setIsExpired(true);
+      } else if (message === 'OTP_RATE_LIMITED') {
+        setError('Too many attempts. Please wait a few minutes.');
+      } else {
+        setError(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, []);
+  }, [email, verifyOtp]);
 
   const handleExpire = useCallback(() => {
     setIsExpired(true);
@@ -48,14 +86,16 @@ function VerifyContent() {
     setIsResending(true);
     setError(null);
     setIsExpired(false);
-    
+
     try {
-      // In production: POST /auth/email/otp
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await register(email);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to resend code';
+      setError(message);
     } finally {
       setIsResending(false);
     }
-  }, []);
+  }, [email, register]);
 
   return (
     <div className="min-h-screen auth-gradient flex items-center justify-center p-6">
@@ -76,13 +116,14 @@ function VerifyContent() {
               Check your email
             </h2>
             <p className="text-[#6B7280]">
-              We sent a 6-digit code to <span className="font-medium text-[#4B5563]">{maskedEmail}</span>
+              We sent a verification code to <span className="font-medium text-[#4B5563]">{maskedEmail}</span>
             </p>
           </div>
 
           {/* OTP Input */}
           <div className="mb-6">
             <OTPInput
+              length={8}
               onComplete={handleOTPComplete}
               disabled={isSubmitting || isExpired}
               error={!!error}

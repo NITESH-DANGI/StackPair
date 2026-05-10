@@ -4,45 +4,75 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import StepIndicator from '@/components/onboarding/StepIndicator';
 import LevelComputingBanner from '@/components/onboarding/LevelComputingBanner';
-import { TrophyIcon } from '@/components/ui/Icons';
 import Link from 'next/link';
-
-function CountUp({ target, duration = 1200 }: { target: number; duration?: number }) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.round(eased * target));
-      
-      if (progress >= 1) clearInterval(interval);
-    }, 16);
-
-    return () => clearInterval(interval);
-  }, [target, duration]);
-
-  return <span>{count}</span>;
-}
+import { api, ApiError } from '@/lib/api';
+import type { OnboardingStateResponse, VerificationStatus } from '@/lib/types/auth';
 
 export default function WelcomePage() {
   const [showContent, setShowContent] = useState(false);
-  const [primarySkill, setPrimarySkill] = useState<string | null>(null);
+  const [completeCalled, setCompleteCalled] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus | null>(null);
 
+  // Call /onboarding/complete on mount to transition to ACTIVE
   useEffect(() => {
-    // Staggered reveal
-    setTimeout(() => setShowContent(true), 300);
-    
-    // Simulate M-02 completing after some time (polling in production)
-    const timeout = setTimeout(() => {
-      setPrimarySkill('TypeScript');
-    }, 8000);
+    if (completeCalled) return;
+    setCompleteCalled(true);
 
-    return () => clearTimeout(timeout);
+    (async () => {
+      try {
+        await api<OnboardingStateResponse>('/onboarding/complete', {
+          method: 'POST',
+        });
+      } catch (err) {
+        // If already ACTIVE, that's fine
+        if (err instanceof ApiError && err.detail === 'INVALID_ONBOARDING_STATE') {
+          // Already completed — not an error
+        } else {
+          setCompleteError(err instanceof Error ? err.message : 'Failed to complete onboarding');
+        }
+      }
+    })();
+  }, [completeCalled]);
+
+  // Staggered reveal
+  useEffect(() => {
+    setTimeout(() => setShowContent(true), 300);
   }, []);
+
+  // Poll verification status
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollStatus = async () => {
+      try {
+        const status = await api<VerificationStatus>('/users/me/verification-status', {
+          method: 'GET',
+        });
+        if (!cancelled) {
+          setVerificationStatus(status);
+        }
+      } catch {
+        // No verification run yet — that's normal
+      }
+    };
+
+    // Initial fetch
+    pollStatus();
+
+    // Poll every 10 seconds for up to 2 minutes
+    const interval = setInterval(pollStatus, 10000);
+    const timeout = setTimeout(() => clearInterval(interval), 120000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  const primarySkill = verificationStatus?.normalised_primary_skill || null;
+  const skillLevel = verificationStatus?.assigned_level || null;
 
   return (
     <>
@@ -53,8 +83,8 @@ export default function WelcomePage() {
         <div className="relative mb-8">
           <div className="absolute -top-4 left-1/4 w-2 h-2 rounded-full bg-[#7A8EC0]/30 sparkle" />
           <div className="absolute -top-2 right-1/3 w-3 h-3 rounded-full bg-[#F59E0B]/30 sparkle" style={{ animationDelay: '0.5s' }} />
-          <div className="absolute top-4 left-1/6 w-1.5 h-1.5 rounded-full bg-[#059669]/30 sparkle" style={{ animationDelay: '1s' }} />
-          <div className="absolute top-2 right-1/5 w-2 h-2 rounded-full bg-[#EC4899]/30 sparkle" style={{ animationDelay: '1.5s' }} />
+          <div className="absolute top-4 left-[16%] w-1.5 h-1.5 rounded-full bg-[#059669]/30 sparkle" style={{ animationDelay: '1s' }} />
+          <div className="absolute top-2 right-[20%] w-2 h-2 rounded-full bg-[#EC4899]/30 sparkle" style={{ animationDelay: '1.5s' }} />
           <div className="absolute -top-6 left-1/2 w-2.5 h-2.5 rounded-full bg-[#8B5CF6]/30 sparkle" style={{ animationDelay: '0.7s' }} />
         </div>
 
@@ -73,35 +103,37 @@ export default function WelcomePage() {
           </p>
         </motion.div>
 
-        {/* Bridge Points card */}
+        {/* Onboarding complete message */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={showContent ? { opacity: 1, scale: 1 } : {}}
           transition={{ duration: 0.5, delay: 0.5, ease: 'easeOut' }}
           className="mt-10 p-8 rounded-3xl bg-[#ECEDF2] border border-[#B8BFDA] shadow-sm"
         >
-          <div className="w-14 h-14 rounded-2xl bg-[#7A8EC0]/10 flex items-center justify-center mx-auto mb-4">
-            <TrophyIcon className="text-[#7A8EC0]" size={28} />
+          <div className="w-14 h-14 rounded-2xl bg-[#059669]/10 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-[#059669]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </div>
-          <p className="text-sm font-medium text-[#7A8EC0] mb-2">You earned</p>
-          <div className="text-6xl font-bold text-[#7A8EC0] mb-2 animate-count-up">
-            {showContent && <CountUp target={50} />}
-          </div>
-          <p className="text-lg font-semibold text-[#1A1A1A] mb-1">Bridge Points</p>
+          <p className="text-lg font-semibold text-[#1A1A1A] mb-1">Profile Complete</p>
           <p className="text-sm text-[#6B7280]">
-            Bridge Points unlock premium features and priority matching
+            Your account is now active. Connect your platforms to get your AI-verified skill level.
           </p>
         </motion.div>
 
-        {/* Level Computing Banner */}
+        {/* Verification Status */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={showContent ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.4, delay: 0.8, ease: 'easeOut' }}
           className="mt-6"
         >
-          <LevelComputingBanner primarySkill={primarySkill} skillLevel={primarySkill ? 2 : null} />
+          <LevelComputingBanner primarySkill={primarySkill} skillLevel={skillLevel} />
         </motion.div>
+
+        {completeError && (
+          <p className="mt-4 text-sm text-[#DC2626]">{completeError}</p>
+        )}
 
         {/* CTA */}
         <motion.div
@@ -111,10 +143,10 @@ export default function WelcomePage() {
           className="mt-8"
         >
           <Link
-            href="/learn"
+            href="/dashboard"
             className="inline-flex items-center justify-center gap-2 w-full py-4 rounded-full bg-[#7A8EC0] text-white font-semibold text-base hover:bg-[#6A7EB0] transition-all duration-200 shadow-lg shadow-gray-300"
           >
-            Start Exploring
+            Go to Dashboard
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>

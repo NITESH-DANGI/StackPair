@@ -3,10 +3,10 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import StepIndicator from '@/components/onboarding/StepIndicator';
-import PlatformConnectCard from '@/components/onboarding/PlatformConnectCard';
-import LevelComputingBanner from '@/components/onboarding/LevelComputingBanner';
 import { TargetIcon, LayoutIcon, BriefcaseIcon, GlobeIcon, MicIcon, RocketIcon, HandshakeIcon } from '@/components/ui/Icons';
-import { PLATFORMS, GOALS, type Platform } from '@/lib/types/auth';
+import { GOALS } from '@/lib/types/auth';
+import { api, ApiError } from '@/lib/api';
+import type { OnboardingStateResponse } from '@/lib/types/auth';
 import React from 'react';
 
 const GOAL_ICONS: Record<string, React.ReactNode> = {
@@ -19,23 +19,38 @@ const GOAL_ICONS: Record<string, React.ReactNode> = {
   mentor_others: <HandshakeIcon size={22} />,
 };
 
-export default function PlatformsPage() {
-  const [connectedPlatforms, setConnectedPlatforms] = useState<Record<string, string>>({});
+// Common timezones for Indian users
+const TIMEZONES = [
+  'Asia/Kolkata',
+  'Asia/Dubai',
+  'Asia/Singapore',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+];
+
+const LANGUAGES = [
+  'English',
+  'Hindi',
+  'Tamil',
+  'Telugu',
+  'Kannada',
+  'Bengali',
+  'Marathi',
+  'Gujarati',
+  'Malayalam',
+  'Punjabi',
+];
+
+export default function GoalsPage() {
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [timezone, setTimezone] = useState('Asia/Kolkata');
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['English']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const isGitHubConnected = !!connectedPlatforms['github'];
-
-  const handleConnect = useCallback(async (platformId: Platform) => {
-    // In production: POST /onboarding/connect-platform with OAuth
-    // Simulating connection
-    await new Promise(resolve => setTimeout(resolve, 800));
-    setConnectedPlatforms(prev => ({
-      ...prev,
-      [platformId]: platformId === 'github' ? 'nitesh_k' : 'user_' + platformId,
-    }));
-  }, []);
 
   const toggleGoal = useCallback((goalId: string) => {
     setSelectedGoals(prev =>
@@ -47,14 +62,18 @@ export default function PlatformsPage() {
     );
   }, []);
 
+  const toggleLanguage = useCallback((lang: string) => {
+    setSelectedLanguages(prev =>
+      prev.includes(lang)
+        ? prev.filter(l => l !== lang)
+        : [...prev, lang]
+    );
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!isGitHubConnected) {
-      setError('GitHub connection is required');
-      return;
-    }
     if (selectedGoals.length === 0) {
       setError('Please select at least 1 goal');
       return;
@@ -62,11 +81,25 @@ export default function PlatformsPage() {
 
     setIsLoading(true);
     try {
-      // In production: PATCH /onboarding/goals
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await api<OnboardingStateResponse>('/onboarding/goals', {
+        method: 'POST',
+        body: {
+          goals: selectedGoals,
+          timezone,
+          languages: selectedLanguages.length > 0 ? selectedLanguages : null,
+        },
+      });
       window.location.href = '/onboarding/welcome';
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.detail === 'INVALID_ONBOARDING_STATE') {
+          setError('This step has already been completed.');
+        } else {
+          setError(err.detail);
+        }
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -82,46 +115,12 @@ export default function PlatformsPage() {
         transition={{ duration: 0.4, ease: 'easeOut' }}
         className="max-w-lg mx-auto"
       >
-        {/* Section 1: Platforms */}
+        {/* Section 1: Goals */}
         <div className="mb-10">
           <div className="text-center mb-6">
             <h1 className="font-display text-3xl font-semibold text-[#1A1A1A] mb-2">
-              Connect your platforms
-            </h1>
-            <p className="text-[#6B7280]">Link your developer accounts to verify your skills</p>
-          </div>
-
-          <div className="space-y-3">
-            {PLATFORMS.map((platform) => (
-              <PlatformConnectCard
-                key={platform.id}
-                platform={platform}
-                isConnected={!!connectedPlatforms[platform.id]}
-                platformUsername={connectedPlatforms[platform.id]}
-                onConnect={() => handleConnect(platform.id)}
-              />
-            ))}
-          </div>
-
-          {/* Level computing banner */}
-          {isGitHubConnected && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className="mt-4"
-            >
-              <LevelComputingBanner />
-            </motion.div>
-          )}
-        </div>
-
-        {/* Section 2: Goals */}
-        <div className="mb-8">
-          <div className="text-center mb-6">
-            <h2 className="font-display text-2xl font-semibold text-[#1A1A1A] mb-2">
               What are your goals?
-            </h2>
+            </h1>
             <p className="text-[#6B7280]">Select what you want to achieve</p>
           </div>
 
@@ -155,6 +154,51 @@ export default function PlatformsPage() {
           </p>
         </div>
 
+        {/* Section 2: Timezone */}
+        <div className="mb-8">
+          <label htmlFor="timezone" className="block text-sm font-medium text-[#4B5563] mb-1.5">
+            Your Timezone <span className="text-[#DC2626]">*</span>
+          </label>
+          <select
+            id="timezone"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className="w-full px-4 py-3.5 rounded-xl border border-[#E5E5E3] bg-white text-[15px] text-[#1A1A1A] transition-all duration-200 outline-none hover:border-[#D4D4D0] focus:border-[#7A8EC0] cursor-pointer"
+          >
+            {TIMEZONES.map((tz) => (
+              <option key={tz} value={tz}>{tz.replace('_', ' ')}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Section 3: Languages */}
+        <div className="mb-8">
+          <div className="mb-3">
+            <h3 className="text-sm font-medium text-[#4B5563] mb-1.5">
+              Languages you speak <span className="text-[#9CA3AF] font-normal">(optional)</span>
+            </h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {LANGUAGES.map((lang) => {
+              const isSelected = selectedLanguages.includes(lang);
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => toggleLanguage(lang)}
+                  className={`px-3.5 py-2 rounded-full text-sm font-medium transition-all duration-200 cursor-pointer
+                    ${isSelected
+                      ? 'bg-[#7A8EC0] text-white'
+                      : 'bg-[#F3F4F6] text-[#4B5563] hover:bg-[#E5E7EB] hover:text-[#1A1A1A]'
+                    }`}
+                >
+                  {lang}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {error && (
           <p className="text-sm text-[#DC2626] text-center mb-4">{error}</p>
         )}
@@ -162,7 +206,7 @@ export default function PlatformsPage() {
         <form onSubmit={handleSubmit}>
           <button
             type="submit"
-            disabled={isLoading || !isGitHubConnected || selectedGoals.length === 0}
+            disabled={isLoading || selectedGoals.length === 0}
             className="w-full py-3.5 rounded-full bg-[#7A8EC0] text-white font-semibold text-[15px] hover:bg-[#6A7EB0] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isLoading ? (
